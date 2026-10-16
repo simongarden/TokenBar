@@ -80,12 +80,9 @@ struct MenuBarLabelContent: View {
     let summaries: [ServiceSummary]
     let mode: LabelMode
     var active: Set<Service> = []
-    var phase: Double = 0
     var mono: Color = .black
-    static let period = 4.0   // breathing: 2s in, 2s out
     private func t(_ s: Service) -> Double {
-        guard active.contains(s) else { return 0 }
-        return (1 - cos(2 * .pi * phase / Self.period)) / 2   // smooth ease-in-out cross-fade
+        active.contains(s) ? 1 : 0   // active: full-color logo, idle: template mono
     }
     var body: some View {
         HStack(spacing: 11) {
@@ -129,15 +126,11 @@ struct TokenBarApp: App {
     }
 }
 
-/// NSStatusItem + popover. The label is a cached NSImage; while a service is active a 10 fps
-/// timer swaps pre-rendered cross-fade frames (stopped when idle).
+/// NSStatusItem + popover. The label is a cached NSImage, redrawn only when values/activity change.
 @MainActor final class StatusController: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private let store: UsageStore
-    private var timer: Timer?
-    private let fps = 10.0
-    private var framesPerCycle: Int { Int((MenuBarLabelContent.period * fps).rounded()) }
 
     init(store: UsageStore) {
         self.store = store
@@ -170,34 +163,17 @@ struct TokenBarApp: App {
         stateChanged()
     }
 
-    private func stateChanged() {
-        if store.active.isEmpty {
-            timer?.invalidate(); timer = nil
-        } else if timer == nil {
-            let t = Timer(timeInterval: 1 / fps, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.redraw() }
-            }
-            t.tolerance = 0.01
-            RunLoop.main.add(t, forMode: .common)
-            timer = t
-        }
-        redraw()
-    }
+    private func stateChanged() { redraw() }
 
     private func redraw() {
         let mode = LabelMode(rawValue: UserDefaults.standard.string(forKey: SettingsKey.labelMode) ?? "") ?? .mixed
         let dark = (item.button?.effectiveAppearance ?? NSApp.effectiveAppearance)
             .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let active = store.active
-        let n = framesPerCycle
-        let frame = active.isEmpty ? -1
-            : Int((Date().timeIntervalSinceReferenceDate / MenuBarLabelContent.period * Double(n)).rounded(.down)) % n
         let texts = store.summaries.map { "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)" }.joined(separator: ";")
         let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)"
-        let img = LabelCache.shared.image(base: base, frame: frame) {
-            let phase = Double(max(frame, 0)) / Double(n) * MenuBarLabelContent.period
+        let img = LabelCache.shared.image(base: base, frame: 0) {
             let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active,
-                                                               phase: phase,
                                                                mono: active.isEmpty ? .black : (dark ? .white : .black)))
             r.scale = NSScreen.main?.backingScaleFactor ?? 2
             let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
