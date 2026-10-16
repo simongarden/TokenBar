@@ -23,6 +23,12 @@ enum Service: String, CaseIterable, Sendable, Identifiable {
         case .gemini: "Gemini / Antigravity"
         }
     }
+    var logoMono: String {
+        switch self { case .claude: "LogoClaudeMono"; case .codex: "LogoOpenAIMono"; case .gemini: "LogoGeminiMono" }
+    }
+    var logoColor: String {
+        switch self { case .claude: "LogoClaudeColor"; case .codex: "LogoCodexColor"; case .gemini: "LogoGeminiColor" }
+    }
     var symbol: String {
         switch self {
         case .claude: "asterisk"

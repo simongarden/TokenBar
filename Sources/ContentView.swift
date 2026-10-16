@@ -99,9 +99,9 @@ struct ServiceCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: summary.service.symbol)
-                    .foregroundStyle(summary.service.tint)
-                    .frame(width: 18)
+                Image(summary.service.logoColor)
+                    .resizable().scaledToFit()
+                    .frame(width: 18, height: 18)
                 Text(summary.service.displayName).font(.subheadline.weight(.semibold))
                 Spacer()
                 let mv = summary.mixedValue

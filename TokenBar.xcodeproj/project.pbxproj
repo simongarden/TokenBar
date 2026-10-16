@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		386B6DC565D2FCFFDF0EF37D /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */; };
+		59E9D028D190418BFF604ADC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */; };
 		7AD4F25EB31CDF16D3BFBB3A /* TokenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CC43735E1B18053CB68912 /* TokenBarApp.swift */; };
 		B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */; };
 		EF88FFC6C460D14B128A7FBB /* UsageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */; };
@@ -18,6 +19,7 @@
 		04CC43735E1B18053CB68912 /* TokenBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBarApp.swift; sourceTree = "<group>"; };
 		37E91E36B21661262CBA3970 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3C4D46F3C00BDD605AB05EB6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
 		AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClient.swift; sourceTree = "<group>"; };
@@ -28,6 +30,7 @@
 		A7852218F65306D6397AA28F /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */,
 				D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */,
 				AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */,
 				37E91E36B21661262CBA3970 /* Info.plist */,
@@ -62,6 +65,7 @@
 			buildConfigurationList = F02FF9FBDA0222C31FF4C990 /* Build configuration list for PBXNativeTarget "TokenBar" */;
 			buildPhases = (
 				4EAD462B16E6499689DF171E /* Sources */,
+				E16E839CD7A8C555BF9EAA9C /* Resources */,
 			);
 			buildRules = (
 			);
@@ -107,6 +111,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E16E839CD7A8C555BF9EAA9C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59E9D028D190418BFF604ADC /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4EAD462B16E6499689DF171E /* Sources */ = {
