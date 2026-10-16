@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		386B6DC565D2FCFFDF0EF37D /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */; };
+		513582FAB0D9D356D68C5CED /* ActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */; };
 		59E9D028D190418BFF604ADC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */; };
 		7AD4F25EB31CDF16D3BFBB3A /* TokenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CC43735E1B18053CB68912 /* TokenBarApp.swift */; };
 		B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */; };
@@ -22,6 +23,7 @@
 		7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
 		AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMonitor.swift; sourceTree = "<group>"; };
 		D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClient.swift; sourceTree = "<group>"; };
 		E1E82A1EE46FD1E7637C3943 /* TokenBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TokenBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -30,6 +32,7 @@
 		A7852218F65306D6397AA28F /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */,
 				7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */,
 				D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */,
 				AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */,
@@ -128,6 +131,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				513582FAB0D9D356D68C5CED /* ActivityMonitor.swift in Sources */,
 				386B6DC565D2FCFFDF0EF37D /* ClaudeUsageClient.swift in Sources */,
 				B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */,
 				F147868DCF8C173A84C8CC88 /* Models.swift in Sources */,

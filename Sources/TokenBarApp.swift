@@ -15,6 +15,10 @@ final class UsageStore {
     private let scanner = UsageScanner()
     private let claudeClient = ClaudeUsageClient()
     @ObservationIgnored private var loop: Task<Void, Never>?
+    var active: Set<Service> = []
+    var activityDetail: [Service: String] = [:]
+    private let activity = ActivityMonitor()
+    @ObservationIgnored private var activityLoop: Task<Void, Never>?
 
     init() {
         UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.mixed.rawValue,
@@ -25,6 +29,12 @@ final class UsageStore {
             while !Task.isCancelled {
                 await self?.refresh()
                 try? await Task.sleep(for: .seconds(30))
+            }
+        }
+        activityLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.pollActivity()
+                try? await Task.sleep(for: .seconds(2.5))
             }
         }
     }
@@ -54,23 +64,45 @@ final class UsageStore {
         isRefreshing = false
     }
 
+    private func pollActivity() async {
+        let r = await activity.poll()
+        activityDetail = r.detail
+        guard r.active != active else { return }
+        let names = r.active.map(\.rawValue).sorted().joined(separator: ",")
+        log.notice("activity changed: [\(names, privacy: .public)] \(r.detail.map { "\($0.key.rawValue)=\($0.value)" }.joined(separator: "; "), privacy: .public)")
+        active = r.active
+    }
+
     var todayTotal: Int { summaries.reduce(0) { $0 + $1.today.total } }
 }
 
 struct MenuBarLabelContent: View {
     let summaries: [ServiceSummary]
     let mode: LabelMode
+    var active: Set<Service> = []
+    var phase: Double = 0
+    var mono: Color = .black
+    static let period = 4.0   // breathing: 2s in, 2s out
+    private func t(_ s: Service) -> Double {
+        guard active.contains(s) else { return 0 }
+        return (1 - cos(2 * .pi * phase / Self.period)) / 2   // smooth ease-in-out cross-fade
+    }
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 11) {
             ForEach(summaries) { s in
                 HStack(spacing: 2) {
-                    Image(s.service.logoMono).renderingMode(.template).resizable().scaledToFit().frame(width: 14, height: 14)
+                    ZStack {
+                        Image(s.service.logoMono).renderingMode(.template).resizable().scaledToFit()
+                            .foregroundStyle(mono).opacity(1 - t(s.service))
+                        Image(s.service.logoColor).resizable().scaledToFit().opacity(t(s.service))
+                    }
+                    .frame(width: 14, height: 14)
                     Text(text(s)).lineLimit(1).fixedSize()
                         .font(.system(size: 12, weight: .medium).monospacedDigit())
                 }
             }
         }
-        .foregroundStyle(.black)
+        .foregroundStyle(mono)
         .padding(.horizontal, 1)
         .fixedSize()
     }
@@ -86,25 +118,106 @@ struct MenuBarLabelContent: View {
 
 @main
 struct TokenBarApp: App {
-    @State private var store = UsageStore()
-    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.mixed.rawValue
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    var body: some Scene { Settings { EmptyView() } }
+}
 
-    var body: some Scene {
-        MenuBarExtra {
-            ContentView(store: store)
-        } label: {
-            Image(nsImage: labelImage())
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var controller: StatusController?
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        controller = StatusController(store: UsageStore())
+    }
+}
+
+/// NSStatusItem + popover. The label is a cached NSImage; while a service is active a 10 fps
+/// timer swaps pre-rendered cross-fade frames (stopped when idle).
+@MainActor final class StatusController: NSObject {
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let popover = NSPopover()
+    private let store: UsageStore
+    private var timer: Timer?
+    private let fps = 10.0
+    private var framesPerCycle: Int { Int((MenuBarLabelContent.period * fps).rounded()) }
+
+    init(store: UsageStore) {
+        self.store = store
+        super.init()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: ContentView(store: store))
+        item.button?.target = self
+        item.button?.action = #selector(toggle)
+        item.button?.imagePosition = .imageOnly
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.redraw() }
         }
-        .menuBarExtraStyle(.window)
+        track()
     }
 
-    /// Render as a single monochrome template image so it adapts to light/dark menu bars.
-    @MainActor private func labelImage() -> NSImage {
-        let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries,
-                                                           mode: LabelMode(rawValue: modeRaw) ?? .percent))
-        r.scale = NSScreen.main?.backingScaleFactor ?? 2
-        let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
-        img.isTemplate = true
+    @objc private func toggle() {
+        if popover.isShown { popover.performClose(nil) }
+        else if let b = item.button {
+            NSApp.activate()
+            popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+        }
+    }
+
+    private func track() {
+        withObservationTracking {
+            _ = store.summaries; _ = store.active
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.stateChanged(); self?.track() }
+        }
+        stateChanged()
+    }
+
+    private func stateChanged() {
+        if store.active.isEmpty {
+            timer?.invalidate(); timer = nil
+        } else if timer == nil {
+            let t = Timer(timeInterval: 1 / fps, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.redraw() }
+            }
+            t.tolerance = 0.01
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
+        }
+        redraw()
+    }
+
+    private func redraw() {
+        let mode = LabelMode(rawValue: UserDefaults.standard.string(forKey: SettingsKey.labelMode) ?? "") ?? .mixed
+        let dark = (item.button?.effectiveAppearance ?? NSApp.effectiveAppearance)
+            .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let active = store.active
+        let n = framesPerCycle
+        let frame = active.isEmpty ? -1
+            : Int((Date().timeIntervalSinceReferenceDate / MenuBarLabelContent.period * Double(n)).rounded(.down)) % n
+        let texts = store.summaries.map { "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)" }.joined(separator: ";")
+        let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)"
+        let img = LabelCache.shared.image(base: base, frame: frame) {
+            let phase = Double(max(frame, 0)) / Double(n) * MenuBarLabelContent.period
+            let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active,
+                                                               phase: phase,
+                                                               mono: active.isEmpty ? .black : (dark ? .white : .black)))
+            r.scale = NSScreen.main?.backingScaleFactor ?? 2
+            let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
+            img.isTemplate = active.isEmpty   // color frames can't be template; idle stays template
+            return img
+        }
+        if item.button?.image !== img { item.button?.image = img }
+    }
+}
+
+/// Caches rendered menu-bar frames so the animation is a cheap image swap.
+@MainActor final class LabelCache {
+    static let shared = LabelCache()
+    private var base = ""
+    private var frames: [Int: NSImage] = [:]
+    func image(base: String, frame: Int, render: () -> NSImage) -> NSImage {
+        if base != self.base { self.base = base; frames.removeAll() }
+        if let img = frames[frame] { return img }
+        let img = render()
+        frames[frame] = img
         return img
     }
 }
