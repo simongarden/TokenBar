@@ -31,7 +31,8 @@ actor ClaudeUsageClient {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else {
-                if code == 401 { self.token = nil }   // Claude Code refreshes it; re-read next time
+                if code == 401 { self.token = nil }
+                if code == 429 { lastFetch = Date().addingTimeInterval(8 * 60) }   // back off ~10 min when throttled   // Claude Code refreshes it; re-read next time
                 status = .httpError(code); cached = nil
                 return (nil, status)
             }

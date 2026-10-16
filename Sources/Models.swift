@@ -49,6 +49,9 @@ struct ServiceSummary: Sendable, Identifiable {
     var sourceNote: String = ""
     var fileCount = 0
     var rate: RateInfo?
+    var periodTokens: Int?
+    var periodStart: Date?
+    var periodSource: String?
     var id: Service { service }
 }
 
@@ -87,11 +90,23 @@ struct RateInfo: Sendable, Equatable {
 }
 
 enum LabelMode: String, CaseIterable, Sendable {
-    case percent, tokens
+    case mixed, percent, tokens
+}
+
+enum ValueKind: String, Sendable { case percent = "百分比", period = "本週期", today = "今日", none = "無資料" }
+
+extension ServiceSummary {
+    /// Mixed mode: % of current window → tokens in current window → today's tokens.
+    var mixedValue: (text: String, kind: ValueKind) {
+        if rate?.primary != nil { return (percentText(rate), .percent) }
+        if let p = periodTokens { return (compactNumber(p), .period) }
+        if available { return (compactNumber(today.total), .today) }
+        return ("—", .none)
+    }
 }
 
 enum SettingsKey {
-    static let labelMode = "labelMode"
+    static let labelMode = "menuBarLabelMode"
     static let claudeOAuth = "claudeUseOAuth"
     static let claude5hLimit = "claude5hTokenLimit"
     static let geminiDailyLimit = "geminiDailyTokenLimit"

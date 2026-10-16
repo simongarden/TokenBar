@@ -8,7 +8,7 @@ actor UsageScanner {
         var mtime: Date?
         var days: [DayKey: TokenBreakdown] = [:]
         var lastCodexTotal = -1
-        var recent: [(Date, Int)] = []
+        var recent: [(Date, TokenBreakdown)] = []
         var latestRate: (Date, RateInfo)?
     }
 
@@ -25,16 +25,18 @@ actor UsageScanner {
 
     func scanAll(claude5hLimit: Int, geminiDailyLimit: Int) -> [ServiceSummary] {
         var c = scanClaude(), x = scanCodex(), g = scanGemini()
-        // Claude: local rolling-5h estimate (input+output+cache write) vs configured limit
-        let cutoff = Date().addingTimeInterval(-5 * 3600)
-        var used = 0
-        for k in (states[.claude] ?? [:]).keys {
-            states[.claude]![k]!.recent.removeAll { $0.0 < cutoff }
-            used += states[.claude]![k]!.recent.reduce(0) { $0 + $1.1 }
-        }
-        if claude5hLimit > 0 {
-            c.rate = RateInfo(primary: .init(usedPercent: Double(used) / Double(claude5hLimit) * 100, windowMinutes: 300),
-                              isEstimate: true, source: "本機 jsonl 估算：近 5 小時 \(compactNumber(used)) / \(compactNumber(claude5hLimit))")
+        prune()
+        // Claude: Claude Code-style 5h block from local jsonl (may be overridden by API resets_at later)
+        if let b = claudeBlock() {
+            c.periodStart = b.start
+            c.periodTokens = b.tokens.total
+            c.periodSource = "Claude Code 式 5 小時區塊（本機 jsonl，\(b.start.formatted(date: .omitted, time: .shortened)) 起）"
+            if claude5hLimit > 0 {
+                let used = b.tokens.input + b.tokens.output + b.tokens.cacheWrite
+                c.rate = RateInfo(primary: .init(usedPercent: Double(used) / Double(claude5hLimit) * 100, windowMinutes: 300,
+                                                 resetsAt: b.start.addingTimeInterval(5 * 3600)),
+                                  isEstimate: true, source: "本機 jsonl 估算：本區塊 \(compactNumber(used)) / \(compactNumber(claude5hLimit))（不含快取讀）")
+            }
         }
         // Codex: newest rate_limits across all sessions
         x.rate = (states[.codex] ?? [:]).values.compactMap(\.latestRate).max { $0.0 < $1.0 }?.1
@@ -42,12 +44,47 @@ actor UsageScanner {
         for w in [\RateInfo.primary, \RateInfo.secondary] {
             if let r = x.rate?[keyPath: w]?.resetsAt, r < now { x.rate![keyPath: w]!.usedPercent = 0 } // window already reset
         }
+        if let p = x.rate?.primary, let r = p.resetsAt, let m = p.windowMinutes, r > now {
+            let start = r.addingTimeInterval(-Double(m) * 60)
+            x.periodStart = start
+            x.periodTokens = windowTokens(.codex, since: start).total
+            x.periodSource = "Codex 限額視窗（\(start.formatted(date: .omitted, time: .shortened)) 起）"
+        }
         // Gemini: no local quota data; optional daily estimate
         if geminiDailyLimit > 0 {
             g.rate = RateInfo(primary: .init(usedPercent: Double(g.today.total) / Double(geminiDailyLimit) * 100, windowMinutes: 1440),
                               isEstimate: true, source: "估算：今日 \(compactNumber(g.today.total)) / \(compactNumber(geminiDailyLimit))")
         }
         return [c, x, g]
+    }
+
+    private func prune() {
+        let cutoff = Date().addingTimeInterval(-24 * 3600)
+        for svc in [Service.claude, .codex] {
+            for k in (states[svc] ?? [:]).keys { states[svc]![k]!.recent.removeAll { $0.0 < cutoff } }
+        }
+    }
+
+    func windowTokens(_ svc: Service, since start: Date) -> TokenBreakdown {
+        var t = TokenBreakdown()
+        for st in (states[svc] ?? [:]).values { for (d, b) in st.recent where d >= start { t += b } }
+        return t
+    }
+
+    /// Active 5h block like Claude Code / ccusage: starts at the hour floor of the first message
+    /// after a 5h gap or after the previous block ended.
+    private func claudeBlock() -> (start: Date, tokens: TokenBreakdown)? {
+        let entries = (states[.claude] ?? [:]).values.flatMap(\.recent).sorted { $0.0 < $1.0 }
+        var start: Date?, last: Date?
+        let cal = Calendar.current
+        for (d, _) in entries {
+            if start == nil || d >= start!.addingTimeInterval(5 * 3600) || d.timeIntervalSince(last!) >= 5 * 3600 {
+                start = cal.dateInterval(of: .hour, for: d)!.start
+            }
+            last = d
+        }
+        guard let start, Date() < start.addingTimeInterval(5 * 3600) else { return nil }
+        return (start, windowTokens(.claude, since: start))
     }
 
     private func codexWindow(_ any: Any?) -> RateWindow? {
@@ -146,8 +183,8 @@ actor UsageScanner {
                                        cacheRead: int(usage["cache_read_input_tokens"]),
                                        cacheWrite: int(usage["cache_creation_input_tokens"]))
                 st.days[date.dayKey, default: .init()] += t
-                if date > Date().addingTimeInterval(-5 * 3600) {
-                    st.recent.append((date, t.input + t.output + t.cacheWrite))
+                if date > Date().addingTimeInterval(-24 * 3600) {
+                    st.recent.append((date, t))
                 }
             }
             map[url.path] = st
@@ -191,6 +228,7 @@ actor UsageScanner {
                                        cacheRead: cached,
                                        cacheWrite: int(last["cache_write_input_tokens"]))
                 st.days[date.dayKey, default: .init()] += t
+                if date > Date().addingTimeInterval(-24 * 3600) { st.recent.append((date, t)) }
             }
             map[url.path] = st
         }

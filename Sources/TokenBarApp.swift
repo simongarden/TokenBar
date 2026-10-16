@@ -1,5 +1,8 @@
 import SwiftUI
 import Observation
+import os
+
+private let log = Logger(subsystem: "com.okmaster.TokenBar", category: "usage")
 
 @MainActor @Observable
 final class UsageStore {
@@ -14,7 +17,7 @@ final class UsageStore {
     @ObservationIgnored private var loop: Task<Void, Never>?
 
     init() {
-        UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.percent.rawValue,
+        UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.mixed.rawValue,
                                                   SettingsKey.claudeOAuth: true,
                                                   SettingsKey.claude5hLimit: 0,
                                                   SettingsKey.geminiDailyLimit: 0])
@@ -35,7 +38,16 @@ final class UsageStore {
         if d.bool(forKey: SettingsKey.claudeOAuth) {
             let (rate, st) = await claudeClient.fetch()
             claudeStatus = st
-            if let rate, let i = s.firstIndex(where: { $0.service == .claude }) { s[i].rate = rate }
+            log.notice("Claude usage API status: \(String(describing: st), privacy: .public)")
+            if let rate, let i = s.firstIndex(where: { $0.service == .claude }) {
+                s[i].rate = rate
+                if let r = rate.primary?.resetsAt, r > .now {
+                    let start = r.addingTimeInterval(-5 * 3600)
+                    s[i].periodStart = start
+                    s[i].periodTokens = await scanner.windowTokens(.claude, since: start).total
+                    s[i].periodSource = "官方 5 小時視窗（\(start.formatted(date: .omitted, time: .shortened)) 起，本機 jsonl 統計）"
+                }
+            }
         } else { claudeStatus = nil }
         summaries = s
         lastUpdated = .now
@@ -53,21 +65,29 @@ struct MenuBarLabelContent: View {
             ForEach(summaries) { s in
                 HStack(spacing: 2) {
                     Image(systemName: s.service.symbol).font(.system(size: 11, weight: .semibold))
-                    Text(mode == .percent ? percentText(s.rate)
-                         : (s.available ? compactNumber(s.today.total) : "—"))
+                    Text(text(s)).lineLimit(1).fixedSize()
                         .font(.system(size: 12, weight: .medium).monospacedDigit())
                 }
             }
         }
         .foregroundStyle(.black)
         .padding(.horizontal, 1)
+        .fixedSize()
+    }
+
+    private func text(_ s: ServiceSummary) -> String {
+        switch mode {
+        case .mixed: s.mixedValue.text
+        case .percent: percentText(s.rate)
+        case .tokens: s.available ? compactNumber(s.today.total) : "—"
+        }
     }
 }
 
 @main
 struct TokenBarApp: App {
     @State private var store = UsageStore()
-    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.percent.rawValue
+    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.mixed.rawValue
 
     var body: some Scene {
         MenuBarExtra {

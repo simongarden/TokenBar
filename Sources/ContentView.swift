@@ -104,13 +104,22 @@ struct ServiceCard: View {
                     .frame(width: 18)
                 Text(summary.service.displayName).font(.subheadline.weight(.semibold))
                 Spacer()
-                if summary.available {
-                    Text("今日 \(compactNumber(summary.today.total))")
+                let mv = summary.mixedValue
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(mv.text)
                         .font(.subheadline.monospacedDigit().weight(.semibold))
                         .foregroundStyle(summary.service.tint)
+                    Text("選單列：" + mv.kind.rawValue).font(.caption2).foregroundStyle(.secondary)
                 }
             }
             rateSection
+            if let p = summary.periodTokens {
+                HStack(spacing: 4) {
+                    Text("本週期").font(.caption2).foregroundStyle(.secondary)
+                    Text(compactNumber(p)).font(.caption.monospacedDigit().weight(.semibold))
+                    Text(summary.periodSource ?? "").font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
             if summary.available {
                 HStack(spacing: 0) {
                     stat("今日", summary.today.total)
@@ -207,7 +216,7 @@ struct ServiceCard: View {
 }
 
 struct SettingsSection: View {
-    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.percent.rawValue
+    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.mixed.rawValue
     @AppStorage(SettingsKey.claudeOAuth) private var claudeOAuth = true
     @AppStorage(SettingsKey.claude5hLimit) private var claudeLimit = 0
     @AppStorage(SettingsKey.geminiDailyLimit) private var geminiLimit = 0
@@ -216,6 +225,7 @@ struct SettingsSection: View {
         DisclosureGroup("設定") {
             VStack(alignment: .leading, spacing: 6) {
                 Picker("選單列顯示", selection: $modeRaw) {
+                    Text("混合").tag(LabelMode.mixed.rawValue)
                     Text("用量 %").tag(LabelMode.percent.rawValue)
                     Text("今日 Token").tag(LabelMode.tokens.rawValue)
                 }
