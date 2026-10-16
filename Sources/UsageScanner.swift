@@ -8,6 +8,8 @@ actor UsageScanner {
         var mtime: Date?
         var days: [DayKey: TokenBreakdown] = [:]
         var lastCodexTotal = -1
+        var recent: [(Date, Int)] = []
+        var latestRate: (Date, RateInfo)?
     }
 
     private var states: [Service: [String: FileState]] = [:]
@@ -21,8 +23,37 @@ actor UsageScanner {
     }()
     private let iso = ISO8601DateFormatter()
 
-    func scanAll() -> [ServiceSummary] {
-        [scanClaude(), scanCodex(), scanGemini()]
+    func scanAll(claude5hLimit: Int, geminiDailyLimit: Int) -> [ServiceSummary] {
+        var c = scanClaude(), x = scanCodex(), g = scanGemini()
+        // Claude: local rolling-5h estimate (input+output+cache write) vs configured limit
+        let cutoff = Date().addingTimeInterval(-5 * 3600)
+        var used = 0
+        for k in (states[.claude] ?? [:]).keys {
+            states[.claude]![k]!.recent.removeAll { $0.0 < cutoff }
+            used += states[.claude]![k]!.recent.reduce(0) { $0 + $1.1 }
+        }
+        if claude5hLimit > 0 {
+            c.rate = RateInfo(primary: .init(usedPercent: Double(used) / Double(claude5hLimit) * 100, windowMinutes: 300),
+                              isEstimate: true, source: "本機 jsonl 估算：近 5 小時 \(compactNumber(used)) / \(compactNumber(claude5hLimit))")
+        }
+        // Codex: newest rate_limits across all sessions
+        x.rate = (states[.codex] ?? [:]).values.compactMap(\.latestRate).max { $0.0 < $1.0 }?.1
+        let now = Date()
+        for w in [\RateInfo.primary, \RateInfo.secondary] {
+            if let r = x.rate?[keyPath: w]?.resetsAt, r < now { x.rate![keyPath: w]!.usedPercent = 0 } // window already reset
+        }
+        // Gemini: no local quota data; optional daily estimate
+        if geminiDailyLimit > 0 {
+            g.rate = RateInfo(primary: .init(usedPercent: Double(g.today.total) / Double(geminiDailyLimit) * 100, windowMinutes: 1440),
+                              isEstimate: true, source: "估算：今日 \(compactNumber(g.today.total)) / \(compactNumber(geminiDailyLimit))")
+        }
+        return [c, x, g]
+    }
+
+    private func codexWindow(_ any: Any?) -> RateWindow? {
+        guard let d = any as? [String: Any], let p = d["used_percent"] as? NSNumber else { return nil }
+        let r = (d["resets_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+        return RateWindow(usedPercent: p.doubleValue, windowMinutes: (d["window_minutes"] as? NSNumber)?.intValue, resetsAt: r)
     }
 
     // MARK: - Helpers
@@ -115,6 +146,9 @@ actor UsageScanner {
                                        cacheRead: int(usage["cache_read_input_tokens"]),
                                        cacheWrite: int(usage["cache_creation_input_tokens"]))
                 st.days[date.dayKey, default: .init()] += t
+                if date > Date().addingTimeInterval(-5 * 3600) {
+                    st.recent.append((date, t.input + t.output + t.cacheWrite))
+                }
             }
             map[url.path] = st
         }
@@ -138,7 +172,13 @@ actor UsageScanner {
                 guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       let payload = obj["payload"] as? [String: Any],
                       payload["type"] as? String == "token_count",
-                      let info = payload["info"] as? [String: Any],
+                      let date0 = parseDate(obj["timestamp"] as? String) else { continue }
+                if let rl = payload["rate_limits"] as? [String: Any], let p = codexWindow(rl["primary"]),
+                   st.latestRate == nil || st.latestRate!.0 <= date0 {
+                    st.latestRate = (date0, RateInfo(primary: p, secondary: codexWindow(rl["secondary"]), isEstimate: false,
+                                                     source: "Codex token_count.rate_limits", updatedAt: date0))
+                }
+                guard let info = payload["info"] as? [String: Any],
                       let last = info["last_token_usage"] as? [String: Any],
                       let date = parseDate(obj["timestamp"] as? String) else { continue }
                 // Codex re-emits token_count with unchanged totals; count only when cumulative total moves.

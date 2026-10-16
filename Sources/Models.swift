@@ -26,7 +26,7 @@ enum Service: String, CaseIterable, Sendable, Identifiable {
     var symbol: String {
         switch self {
         case .claude: "asterisk"
-        case .codex: "terminal"
+        case .codex: "chevron.left.forwardslash.chevron.right"
         case .gemini: "sparkle"
         }
     }
@@ -48,6 +48,7 @@ struct ServiceSummary: Sendable, Identifiable {
     var last7: [DailyUsage] = []
     var sourceNote: String = ""
     var fileCount = 0
+    var rate: RateInfo?
     var id: Service { service }
 }
 
@@ -69,4 +70,34 @@ func compactNumber(_ n: Int) -> String {
     case 1_000...: return String(format: "%.1fK", d / 1e3)
     default: return "\(n)"
     }
+}
+
+struct RateWindow: Sendable, Equatable {
+    var usedPercent: Double
+    var windowMinutes: Int?
+    var resetsAt: Date?
+}
+
+struct RateInfo: Sendable, Equatable {
+    var primary: RateWindow?      // 5h (or daily for Gemini estimate)
+    var secondary: RateWindow?    // weekly
+    var isEstimate: Bool
+    var source: String
+    var updatedAt: Date?
+}
+
+enum LabelMode: String, CaseIterable, Sendable {
+    case percent, tokens
+}
+
+enum SettingsKey {
+    static let labelMode = "labelMode"
+    static let claudeOAuth = "claudeUseOAuth"
+    static let claude5hLimit = "claude5hTokenLimit"
+    static let geminiDailyLimit = "geminiDailyTokenLimit"
+}
+
+func percentText(_ r: RateInfo?) -> String {
+    guard let p = r?.primary?.usedPercent else { return "—" }
+    return (r!.isEstimate ? "~" : "") + "\(Int(p.rounded()))%"
 }

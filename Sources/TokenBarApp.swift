@@ -8,10 +8,16 @@ final class UsageStore {
     }
     var lastUpdated: Date?
     var isRefreshing = false
+    var claudeStatus: ClaudeUsageClient.Status?
     private let scanner = UsageScanner()
+    private let claudeClient = ClaudeUsageClient()
     @ObservationIgnored private var loop: Task<Void, Never>?
 
     init() {
+        UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.percent.rawValue,
+                                                  SettingsKey.claudeOAuth: true,
+                                                  SettingsKey.claude5hLimit: 0,
+                                                  SettingsKey.geminiDailyLimit: 0])
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
@@ -23,7 +29,15 @@ final class UsageStore {
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        summaries = await scanner.scanAll()
+        let d = UserDefaults.standard
+        var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit),
+                                      geminiDailyLimit: d.integer(forKey: SettingsKey.geminiDailyLimit))
+        if d.bool(forKey: SettingsKey.claudeOAuth) {
+            let (rate, st) = await claudeClient.fetch()
+            claudeStatus = st
+            if let rate, let i = s.firstIndex(where: { $0.service == .claude }) { s[i].rate = rate }
+        } else { claudeStatus = nil }
+        summaries = s
         lastUpdated = .now
         isRefreshing = false
     }
@@ -31,20 +45,46 @@ final class UsageStore {
     var todayTotal: Int { summaries.reduce(0) { $0 + $1.today.total } }
 }
 
+struct MenuBarLabelContent: View {
+    let summaries: [ServiceSummary]
+    let mode: LabelMode
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(summaries) { s in
+                HStack(spacing: 2) {
+                    Image(systemName: s.service.symbol).font(.system(size: 11, weight: .semibold))
+                    Text(mode == .percent ? percentText(s.rate)
+                         : (s.available ? compactNumber(s.today.total) : "—"))
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                }
+            }
+        }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 1)
+    }
+}
+
 @main
 struct TokenBarApp: App {
     @State private var store = UsageStore()
+    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.percent.rawValue
 
     var body: some Scene {
         MenuBarExtra {
             ContentView(store: store)
         } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "chart.bar.xaxis")
-                Text(store.lastUpdated == nil ? "—" : compactNumber(store.todayTotal))
-                    .monospacedDigit()
-            }
+            Image(nsImage: labelImage())
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Render as a single monochrome template image so it adapts to light/dark menu bars.
+    @MainActor private func labelImage() -> NSImage {
+        let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries,
+                                                           mode: LabelMode(rawValue: modeRaw) ?? .percent))
+        r.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
+        img.isTemplate = true
+        return img
     }
 }

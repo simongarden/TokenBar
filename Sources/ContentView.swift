@@ -21,13 +21,31 @@ struct ContentView: View {
             header
             GlassEffectContainer(spacing: 8) {
                 VStack(spacing: 8) {
-                    ForEach(store.summaries) { ServiceCard(summary: $0) }
+                    ForEach(store.summaries) { ServiceCard(summary: $0, rateNote: rateNote(for: $0)) }
                 }
             }
+            SettingsSection()
             footer
         }
         .padding(12)
         .frame(width: 380)
+    }
+
+    private func rateNote(for s: ServiceSummary) -> String {
+        switch s.service {
+        case .claude:
+            let st: String = switch store.claudeStatus {
+            case nil: "官方 API 已停用"
+            case .ok?: ""
+            case .noCredential?: "鑰匙圈找不到 Claude Code 憑證"
+            case .denied?: "鑰匙圈存取被拒"
+            case .httpError(let c)?: "API 錯誤 \(c)"
+            case .failed?: "API 讀取失敗"
+            }
+            return s.rate == nil ? "\(st)；可在設定填入 5 小時 token 上限以估算" : st
+        case .codex: return "最近的 token_count 事件中沒有 rate_limits"
+        case .gemini: return "本機沒有配額資料；可在設定填入每日上限以估算"
+        }
     }
 
     private var header: some View {
@@ -76,6 +94,7 @@ struct ContentView: View {
 
 struct ServiceCard: View {
     let summary: ServiceSummary
+    let rateNote: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -91,6 +110,7 @@ struct ServiceCard: View {
                         .foregroundStyle(summary.service.tint)
                 }
             }
+            rateSection
             if summary.available {
                 HStack(spacing: 0) {
                     stat("今日", summary.today.total)
@@ -129,6 +149,36 @@ struct ServiceCard: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 14))
     }
 
+    @ViewBuilder private var rateSection: some View {
+        if let r = summary.rate {
+            VStack(alignment: .leading, spacing: 3) {
+                if let p = r.primary { windowRow(p, title: p.windowMinutes == 1440 ? "每日" : "5 小時", est: r.isEstimate) }
+                if let w = r.secondary { windowRow(w, title: "每週", est: r.isEstimate) }
+                Text((r.isEstimate ? "估計值 · " : "實際值 · ") + r.source)
+                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+        } else {
+            Label("用量百分比：— " + rateNote, systemImage: "gauge.with.dots.needle.0percent")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func windowRow(_ w: RateWindow, title: String, est: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.caption2).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
+            ProgressView(value: min(w.usedPercent, 100), total: 100)
+                .tint(w.usedPercent >= 90 ? .red : w.usedPercent >= 70 ? .orange : summary.service.tint)
+            Text((est ? "~" : "") + "\(Int(w.usedPercent.rounded()))%")
+                .font(.caption.monospacedDigit().weight(.semibold)).frame(width: 40, alignment: .trailing)
+            if let r = w.resetsAt {
+                Text("重置 " + r.formatted(Calendar.current.isDateInToday(r)
+                                            ? .dateTime.hour().minute() : .dateTime.month(.defaultDigits).day().hour().minute()))
+                    .font(.caption2).foregroundStyle(.secondary).frame(width: 92, alignment: .trailing)
+            }
+        }
+    }
+
     private func stat(_ title: String, _ n: Int) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
@@ -153,5 +203,36 @@ struct ServiceCard: View {
             Image(systemName: sym).foregroundStyle(.secondary)
             Text("\(title) \(compactNumber(n))").monospacedDigit()
         }
+    }
+}
+
+struct SettingsSection: View {
+    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.percent.rawValue
+    @AppStorage(SettingsKey.claudeOAuth) private var claudeOAuth = true
+    @AppStorage(SettingsKey.claude5hLimit) private var claudeLimit = 0
+    @AppStorage(SettingsKey.geminiDailyLimit) private var geminiLimit = 0
+
+    var body: some View {
+        DisclosureGroup("設定") {
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("選單列顯示", selection: $modeRaw) {
+                    Text("用量 %").tag(LabelMode.percent.rawValue)
+                    Text("今日 Token").tag(LabelMode.tokens.rawValue)
+                }
+                .pickerStyle(.segmented)
+                Toggle("Claude 使用官方用量 API（需鑰匙圈授權）", isOn: $claudeOAuth)
+                    .toggleStyle(.switch).controlSize(.mini)
+                LabeledContent("Claude 5 小時 token 上限（估算，0=停用）") {
+                    TextField("0", value: $claudeLimit, format: .number).frame(width: 90)
+                }
+                LabeledContent("Gemini 每日 token 上限（估算，0=停用）") {
+                    TextField("0", value: $geminiLimit, format: .number).frame(width: 90)
+                }
+                Text("設定會在下次更新時套用").font(.caption2).foregroundStyle(.tertiary)
+            }
+            .font(.caption)
+            .padding(.top, 4)
+        }
+        .font(.caption)
     }
 }
