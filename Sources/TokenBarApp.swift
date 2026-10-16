@@ -16,6 +16,7 @@ final class UsageStore {
     private let claudeClient = ClaudeUsageClient()
     @ObservationIgnored private var loop: Task<Void, Never>?
     var active: Set<Service> = []
+    var grokActive = false
     var activityDetail: [Service: String] = [:]
     private let activity = ActivityMonitor()
     @ObservationIgnored private var activityLoop: Task<Void, Never>?
@@ -67,6 +68,10 @@ final class UsageStore {
     private func pollActivity() async {
         let r = await activity.poll()
         activityDetail = r.detail
+        if (r.grok != nil) != grokActive {
+            grokActive = r.grok != nil
+            log.notice("grok bot \(self.grokActive ? "ACTIVE" : "IDLE", privacy: .public) \(r.grok ?? "", privacy: .public)")
+        }
         guard r.active != active else { return }
         let names = r.active.map(\.rawValue).sorted().joined(separator: ",")
         log.notice("activity changed: [\(names, privacy: .public)] \(r.detail.map { "\($0.key.rawValue)=\($0.value)" }.joined(separator: "; "), privacy: .public)")
@@ -80,6 +85,7 @@ struct MenuBarLabelContent: View {
     let summaries: [ServiceSummary]
     let mode: LabelMode
     var active: Set<Service> = []
+    var grok = false
     var mono: Color = .black
     private func t(_ s: Service) -> Double {
         active.contains(s) ? 1 : 0   // active: full-color logo, idle: template mono
@@ -97,6 +103,10 @@ struct MenuBarLabelContent: View {
                     Text(text(s)).lineLimit(1).fixedSize()
                         .font(.system(size: 12, weight: .medium).monospacedDigit())
                 }
+            }
+            if grok {   // Grok Bot: shown only while working, icon only
+                Image("LogoGrokMono").renderingMode(.template).resizable().scaledToFit()
+                    .foregroundStyle(mono).frame(width: 14, height: 14)
             }
         }
         .foregroundStyle(mono)
@@ -156,7 +166,7 @@ struct TokenBarApp: App {
 
     private func track() {
         withObservationTracking {
-            _ = store.summaries; _ = store.active
+            _ = store.summaries; _ = store.active; _ = store.grokActive
         } onChange: { [weak self] in
             Task { @MainActor in self?.stateChanged(); self?.track() }
         }
@@ -171,9 +181,9 @@ struct TokenBarApp: App {
             .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let active = store.active
         let texts = store.summaries.map { "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)" }.joined(separator: ";")
-        let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)"
+        let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)|g\(store.grokActive)"
         let img = LabelCache.shared.image(base: base, frame: 0) {
-            let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active,
+            let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active, grok: store.grokActive,
                                                                mono: active.isEmpty ? .black : (dark ? .white : .black)))
             r.scale = NSScreen.main?.backingScaleFactor ?? 2
             let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!

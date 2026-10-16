@@ -19,7 +19,7 @@ actor ActivityMonitor {
         return Set(raw.split(separator: ",").compactMap { Service(rawValue: $0.trimmingCharacters(in: .whitespaces)) })
     }()
 
-    struct Reading: Sendable, Equatable { var active: Set<Service>; var detail: [Service: String] }
+    struct Reading: Sendable, Equatable { var active: Set<Service>; var detail: [Service: String]; var grok: String? = nil }
 
     private let disabled = ProcessInfo.processInfo.environment["TOKENBAR_NO_ACTIVITY"] == "1"   // debug: measure idle CPU
 
@@ -36,7 +36,49 @@ actor ActivityMonitor {
             if let c = cpu[s], c > 0 { why.append(String(format: "CLI CPU %.0f%%", c)) }
             if !why.isEmpty { r.active.insert(s); r.detail[s] = why.joined(separator: "、") }
         }
+        r.grok = grokBotBusy()
         return r
+    }
+
+    // MARK: Grok Bot (same logic as ~/.local/bin/agent-caffeinate.sh)
+
+    /// Grok Bot.app main process with a busy descendant: a shell that itself has children,
+    /// or any non-shell descendant outside an .app bundle's Frameworks/MacOS (i.e. not an Electron helper).
+    private func grokBotBusy() -> String? {
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return nil }
+        var pids = [pid_t](repeating: 0, count: Int(count) + 32)
+        let n = pids.withUnsafeMutableBufferPointer {
+            proc_listallpids($0.baseAddress, Int32($0.count * MemoryLayout<pid_t>.size))
+        }
+        var kids: [pid_t: [pid_t]] = [:]
+        var root: pid_t?
+        let sz = Int32(MemoryLayout<proc_bsdinfo>.size)
+        for pid in pids.prefix(Int(max(0, n))) where pid > 0 {
+            var info = proc_bsdinfo()
+            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sz) == sz else { continue }
+            kids[pid_t(info.pbi_ppid), default: []].append(pid)
+            if root == nil, info.pbi_ppid == 1 {
+                let name = withUnsafeBytes(of: info.pbi_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+                if name == "Grok Bot", execPath(pid).hasSuffix("Grok Bot.app/Contents/MacOS/Grok Bot") { root = pid }
+            }
+        }
+        guard let root else { return nil }
+        let shells: Set<String> = ["zsh", "bash", "sh", "-zsh", "fish"]
+        func busy(_ p: pid_t, depth: Int) -> String? {
+            guard depth < 12 else { return nil }
+            for k in kids[p] ?? [] {
+                let path = execPath(k)
+                let base = (path as NSString).lastPathComponent
+                if shells.contains(base) {
+                    if let c = kids[k], !c.isEmpty { return "shell \(k) 執行中（\(c.count) 個子程序）" }
+                } else if !path.isEmpty, path.range(of: #"\.app/Contents/(Frameworks|MacOS)/"#, options: .regularExpression) == nil {
+                    return "\(base) (\(k))"
+                } else if let r = busy(k, depth: depth + 1) { return r }
+            }
+            return nil
+        }
+        return busy(root, depth: 0)
     }
 
     // MARK: files
