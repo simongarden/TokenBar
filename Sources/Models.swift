@@ -14,26 +14,24 @@ struct TokenBreakdown: Sendable, Equatable {
 }
 
 enum Service: String, CaseIterable, Sendable, Identifiable {
-    case claude, codex, gemini
+    case claude, codex
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .claude: "Claude Code"
         case .codex: "Codex"
-        case .gemini: "Gemini / Antigravity"
         }
     }
     var logoMono: String {
-        switch self { case .claude: "LogoClaudeMono"; case .codex: "LogoOpenAIMono"; case .gemini: "LogoGeminiMono" }
+        switch self { case .claude: "LogoClaudeMono"; case .codex: "LogoOpenAIMono" }
     }
     var logoColor: String {
-        switch self { case .claude: "LogoClaudeColor"; case .codex: "LogoCodexColor"; case .gemini: "LogoGeminiColor" }
+        switch self { case .claude: "LogoClaudeColor"; case .codex: "LogoCodexColor" }
     }
     var symbol: String {
         switch self {
         case .claude: "asterisk"
         case .codex: "chevron.left.forwardslash.chevron.right"
-        case .gemini: "sparkle"
         }
     }
 }
@@ -88,7 +86,7 @@ struct RateWindow: Sendable, Equatable {
 }
 
 struct RateInfo: Sendable, Equatable {
-    var primary: RateWindow?      // 5h (or daily for Gemini estimate)
+    var primary: RateWindow?      // 5h
     var secondary: RateWindow?    // weekly
     var isEstimate: Bool
     var source: String
@@ -115,7 +113,6 @@ enum SettingsKey {
     static let labelMode = "menuBarLabelMode"
     static let claudeOAuth = "claudeUseOAuth"
     static let claude5hLimit = "claude5hTokenLimit"
-    static let geminiDailyLimit = "geminiDailyTokenLimit"
 }
 
 func percentText(_ r: RateInfo?) -> String {

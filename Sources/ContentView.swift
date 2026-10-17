@@ -7,7 +7,6 @@ extension Service {
         switch self {
         case .claude: .orange
         case .codex: .teal
-        case .gemini: .blue
         }
     }
 }
@@ -46,7 +45,6 @@ struct ContentView: View {
             }
             return s.rate == nil ? "\(st)；可在設定填入 5 小時 token 上限以估算" : st
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"
-        case .gemini: return "本機沒有配額資料；可在設定填入每日上限以估算"
         }
     }
 
@@ -221,7 +219,6 @@ struct SettingsSection: View {
     @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.mixed.rawValue
     @AppStorage(SettingsKey.claudeOAuth) private var claudeOAuth = true
     @AppStorage(SettingsKey.claude5hLimit) private var claudeLimit = 0
-    @AppStorage(SettingsKey.geminiDailyLimit) private var geminiLimit = 0
 
     var body: some View {
         DisclosureGroup("設定") {
@@ -236,9 +233,6 @@ struct SettingsSection: View {
                     .toggleStyle(.switch).controlSize(.mini)
                 LabeledContent("Claude 5 小時 token 上限（估算，0=停用）") {
                     TextField("0", value: $claudeLimit, format: .number).frame(width: 90)
-                }
-                LabeledContent("Gemini 每日 token 上限（估算，0=停用）") {
-                    TextField("0", value: $geminiLimit, format: .number).frame(width: 90)
                 }
                 Text("設定會在下次更新時套用").font(.caption2).foregroundStyle(.tertiary)
             }

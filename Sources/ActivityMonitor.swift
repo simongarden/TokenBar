@@ -29,7 +29,7 @@ actor ActivityMonitor {
         for s in forced { r.detail[s] = "debug 強制" }
         let cpu = processCPU()
         let now = Date()
-        let files: [Service: Date?] = [.claude: newestClaude(), .codex: newestCodex(), .gemini: newestGemini()]
+        let files: [Service: Date?] = [.claude: newestClaude(), .codex: newestCodex()]
         for s in Service.allCases {
             var why: [String] = []
             if let m = files[s] ?? nil, now.timeIntervalSince(m) < fileWindow { why.append("記錄檔 \(Int(now.timeIntervalSince(m)))s 前更新") }
@@ -121,42 +121,6 @@ actor ActivityMonitor {
         return best
     }
 
-    private func newestGemini() -> Date? {
-        let g = home.path + "/.gemini"
-        var c: [Date?] = [newest(in: g + "/antigravity-cli/conversations", ext: ["db", "db-wal"])]
-        for p in (try? fm.contentsOfDirectory(atPath: g + "/tmp")) ?? [] {
-            c.append(newest(in: g + "/tmp/" + p + "/chats", ext: ["json"]))
-        }
-        c.append(geminiAppLastWork())
-        return c.compactMap { $0 }.max()
-    }
-
-    private var geminiLogCache: (path: String, mtime: Date, last: Date?)?
-    /// Gemini.app (com.google.GeminiMacOS) has no token data, but its diagnostic log records
-    /// agent/stream work (RemyUpdateGoal, processStreamResponses, DesktopToolService, runSingleStream).
-    private func geminiAppLastWork() -> Date? {
-        let dir = home.path + "/Library/Caches/com.google.GeminiMacOS/Logs"
-        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
-        let logs = names.filter { $0.hasPrefix("diagnostic") && $0.hasSuffix(".log") }
-            .compactMap { n -> (String, Date)? in mtime(dir + "/" + n).map { (dir + "/" + n, $0) } }
-        guard let (path, m) = logs.max(by: { $0.1 < $1.1 }) else { return nil }
-        if let c = geminiLogCache, c.path == path, c.mtime == m { return c.last }
-        var last: Date?
-        if let fh = FileHandle(forReadingAtPath: path) {
-            defer { try? fh.close() }
-            let size = (try? fh.seekToEnd()) ?? 0
-            try? fh.seek(toOffset: size > 65536 ? size - 65536 : 0)
-            let text = String(decoding: (try? fh.readToEnd()) ?? Data(), as: UTF8.self)
-            let markers = ["RemyUpdateGoal", "processStreamResponses", "DesktopToolService", "runSingleStream"]
-            let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss.SSS"; f.locale = Locale(identifier: "en_US_POSIX")
-            for line in text.split(separator: "\n").reversed() where markers.contains(where: { line.contains($0) }) {
-                if let d = f.date(from: String(line.prefix(19))) { last = d; break }
-            }
-        }
-        geminiLogCache = (path, m, last)
-        return last
-    }
-
     // MARK: processes
 
     /// Returns the service and CPU threshold for a process, matching on name, executable path and args.
@@ -164,17 +128,8 @@ actor ActivityMonitor {
         switch name {
         case "claude": return (.claude, cpuThreshold)          // Claude Code CLI (desktop "Claude" ignored)
         case "codex": return (.codex, cpuThreshold)            // Codex CLI / app-server
-        case "agy", "gemini", "antigravity", "language_server_macos_arm": return (.gemini, cpuThreshold)
-        case "Gemini", "Antigravity":
-            // Desktop apps idle at ~5-8% CPU; only treat sustained higher load as working.
-            let path = execPath(pid)
-            if path.contains("/Gemini.app/Contents/MacOS/") || path.contains("/Antigravity.app/Contents/MacOS/") {
-                return (.gemini, 15)
-            }
-            return nil
         case "node", "bun":
             let a = args(pid)
-            if a.contains("/gemini") || a.contains("@google/gemini-cli") { return (.gemini, cpuThreshold) }
             if a.contains("@anthropic-ai/claude-code") { return (.claude, cpuThreshold) }
             if a.contains("@openai/codex") { return (.codex, cpuThreshold) }
             return nil

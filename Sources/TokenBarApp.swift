@@ -24,8 +24,7 @@ final class UsageStore {
     init() {
         UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.mixed.rawValue,
                                                   SettingsKey.claudeOAuth: true,
-                                                  SettingsKey.claude5hLimit: 0,
-                                                  SettingsKey.geminiDailyLimit: 0])
+                                                  SettingsKey.claude5hLimit: 0])
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
@@ -44,8 +43,7 @@ final class UsageStore {
         guard !isRefreshing else { return }
         isRefreshing = true
         let d = UserDefaults.standard
-        var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit),
-                                      geminiDailyLimit: d.integer(forKey: SettingsKey.geminiDailyLimit))
+        var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit))
         if d.bool(forKey: SettingsKey.claudeOAuth) {
             let (rate, st) = await claudeClient.fetch()
             claudeStatus = st
