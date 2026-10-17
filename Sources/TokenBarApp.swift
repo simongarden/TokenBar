@@ -173,6 +173,23 @@ struct TokenBarApp: App {
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: StatusController?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let path = ProcessInfo.processInfo.environment["TOKENBAR_SNAPSHOT"] {
+            // Debug: render the popover content to PNG and exit (no status item).
+            let store = UsageStore()
+            Task { @MainActor in
+                while store.lastUpdated == nil { try? await Task.sleep(for: .milliseconds(200)) }
+                let view = ContentView(store: store).background(Color(nsColor: .windowBackgroundColor))
+                    .environment(\.colorScheme, .dark)
+                let r = ImageRenderer(content: view)
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation,
+                   let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+                exit(0)
+            }
+            return
+        }
         controller = StatusController(store: UsageStore())
     }
 }
@@ -191,6 +208,12 @@ struct TokenBarApp: App {
         item.button?.target = self
         item.button?.action = #selector(toggle)
         item.button?.imagePosition = .imageOnly
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        }
+        NotificationCenter.default.addObserver(forName: NSPopover.didCloseNotification, object: popover, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.redraw() }
         }
@@ -201,12 +224,27 @@ struct TokenBarApp: App {
         RunLoop.main.add(t, forMode: .common)
     }
 
+    private var outsideMonitor: Any?
+    private var lastClose = Date.distantPast
+
     @objc private func toggle() {
-        if popover.isShown { popover.performClose(nil) }
+        // A transient popover closes itself on mouse-down on the status item; don't immediately reopen.
+        if Date().timeIntervalSince(lastClose) < 0.3 { return }
+        if popover.isShown { closePopover() }
         else if let b = item.button {
             NSApp.activate()
             popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+            // Clicks in other apps / desktop close the popover.
+            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                MainActor.assumeIsolated { self?.closePopover() }
+            }
         }
+    }
+
+    private func closePopover() {
+        if popover.isShown { popover.performClose(nil) }
+        if let m = outsideMonitor { NSEvent.removeMonitor(m); outsideMonitor = nil }
+        lastClose = Date()
     }
 
     private func track() {

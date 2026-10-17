@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import ServiceManagement
 
 extension Service {
@@ -18,10 +17,10 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            GlassEffectContainer(spacing: 8) {
-                VStack(spacing: 8) {
-                    ForEach(store.summaries) { ServiceCard(summary: $0, rateNote: rateNote(for: $0)) }
-                }
+            if isSnapshot {
+                cards   // ImageRenderer can't draw Liquid Glass
+            } else {
+                GlassEffectContainer(spacing: 8) { cards }
             }
             footer
         }
@@ -44,6 +43,12 @@ struct ContentView: View {
             }
             return s.rate == nil ? "\(st)" : st
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"
+        }
+    }
+
+    private var cards: some View {
+        VStack(spacing: 8) {
+            ForEach(store.summaries) { ServiceCard(summary: $0, rateNote: rateNote(for: $0)) }
         }
     }
 
@@ -118,27 +123,10 @@ struct ServiceCard: View {
                     stat("近 7 日", summary.week.total)
                     stat("本月", summary.month.total)
                 }
+                .padding(.top, 2)
                 breakdown(summary.month)
                     .padding(.bottom, 11)
-                Chart(summary.last7) { d in
-                    BarMark(x: .value("日期", d.date, unit: .day),
-                            y: .value("Token", d.tokens.total))
-                        .foregroundStyle(barStyle)
-                        .cornerRadius(3)
-                }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) {
-                        AxisValueLabel(format: .dateTime.weekday(.narrow), centered: true)
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 2)) { v in
-                        AxisGridLine()
-                        AxisValueLabel { if let n = v.as(Int.self) { Text(compactNumber(n)) } }
-                    }
-                }
-                .font(.caption2)
-                .frame(height: 56)
+                DayCellsChart(days: summary.last7, colors: cellColors)
             } else {
                 Label(summary.reason ?? "無資料", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.secondary)
@@ -146,7 +134,7 @@ struct ServiceCard: View {
             }
         }
         .padding(10)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .modifier(CardBackground())
     }
 
     private var barStyle: AnyShapeStyle {
@@ -190,11 +178,21 @@ struct ServiceCard: View {
     }
 
     private func stat(_ title: String, _ n: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
-            Text(compactNumber(n)).font(.callout.monospacedDigit().weight(.medium))
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(compactNumber(n)).font(.callout.monospacedDigit().weight(.semibold)).foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Colors for lit cells, index 0 = top cell.
+    private var cellColors: [Color] {
+        switch summary.service {
+        case .claude: return [Color(.sRGB, red: 0xD9/255.0, green: 0x77/255.0, blue: 0x57/255.0)]
+        case .codex: return [0xB1A7FF, 0x7A9DFF, 0x3941FF].map { v in
+            Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+        }
+        }
     }
 
     private func breakdown(_ t: TokenBreakdown) -> some View {
@@ -212,6 +210,67 @@ struct ServiceCard: View {
         HStack(spacing: 2) {
             Image(systemName: sym).foregroundStyle(.secondary)
             Text("\(title) \(compactNumber(n))").monospacedDigit()
+        }
+    }
+}
+
+/// 7 day columns × 10 rounded cells; busiest day = 10 lit, others proportional (≥1 if > 0).
+struct DayCellsChart: View {
+    let days: [DailyUsage]
+    let colors: [Color]          // gradient stops top → bottom (1 = solid)
+    private let rows = 10
+
+    private var maxValue: Int { days.map(\.tokens.total).max() ?? 0 }
+    private func lit(_ v: Int) -> Int {
+        guard v > 0, maxValue > 0 else { return 0 }
+        return max(1, Int((Double(v) / Double(maxValue) * Double(rows)).rounded()))
+    }
+    /// Color for cell at row r (0 = top) by interpolating the stops.
+    private func color(row r: Int) -> Color {
+        guard colors.count > 1 else { return colors.first ?? .accentColor }
+        let t = Double(r) / Double(rows - 1) * Double(colors.count - 1)
+        let i = min(Int(t), colors.count - 2)
+        let f = t - Double(i)
+        let a = NSColor(colors[i]).usingColorSpace(.sRGB)!, b = NSColor(colors[i + 1]).usingColorSpace(.sRGB)!
+        return Color(.sRGB, red: a.redComponent + (b.redComponent - a.redComponent) * f,
+                     green: a.greenComponent + (b.greenComponent - a.greenComponent) * f,
+                     blue: a.blueComponent + (b.blueComponent - a.blueComponent) * f)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("近 7 日 · 最高 \(compactNumber(maxValue))")
+                .font(.caption2).foregroundStyle(.secondary)
+            HStack(alignment: .bottom, spacing: 6) {
+                ForEach(days) { d in
+                    let n = lit(d.tokens.total)
+                    VStack(spacing: 3) {
+                        VStack(spacing: 2) {
+                            ForEach(0..<rows, id: \.self) { r in
+                                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                    .fill(rows - r <= n ? AnyShapeStyle(color(row: r)) : AnyShapeStyle(Color.primary.opacity(0.18)))
+                                    .frame(height: 4)
+                            }
+                        }
+                        .help("\(d.date.formatted(.dateTime.month().day()))：\(compactNumber(d.tokens.total))")
+                        Text(d.date.formatted(.dateTime.weekday(.narrow)))
+                            .font(.caption2).foregroundStyle(Calendar.current.isDateInToday(d.date) ? .primary : .secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+}
+
+let isSnapshot = ProcessInfo.processInfo.environment["TOKENBAR_SNAPSHOT"] != nil
+
+struct CardBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if isSnapshot {
+            content.background(Color.primary.opacity(0.07), in: .rect(cornerRadius: 14))
+        } else {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 14))
         }
     }
 }
