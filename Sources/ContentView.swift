@@ -6,7 +6,7 @@ extension Service {
     var tint: Color {
         switch self {
         case .claude: .orange
-        case .codex: .teal
+        case .codex: Color(.sRGB, red: 0x7A/255.0, green: 0x9D/255.0, blue: 1)   // Codex #7A9DFF
         }
     }
 }
@@ -123,7 +123,7 @@ struct ServiceCard: View {
                 Chart(summary.last7) { d in
                     BarMark(x: .value("日期", d.date, unit: .day),
                             y: .value("Token", d.tokens.total))
-                        .foregroundStyle(summary.service.tint.gradient)
+                        .foregroundStyle(barStyle)
                         .cornerRadius(3)
                 }
                 .chartXAxis {
@@ -147,6 +147,18 @@ struct ServiceCard: View {
         }
         .padding(10)
         .glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+
+    private var barStyle: AnyShapeStyle {
+        switch summary.service {
+        case .codex:
+            let c = [0xB1A7FF, 0x7A9DFF, 0x3941FF].map { v in
+                Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+            }
+            return AnyShapeStyle(LinearGradient(colors: c, startPoint: .top, endPoint: .bottom))
+        case .claude:
+            return AnyShapeStyle(summary.service.tint.gradient)
+        }
     }
 
     @ViewBuilder private var rateSection: some View {
