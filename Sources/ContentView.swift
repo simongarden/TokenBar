@@ -220,6 +220,11 @@ struct DayCellsChart: View {
     private var maxValue: Int { days.map(\.tokens.total).max() ?? 0 }
     private func lit(_ v: Int) -> Int { DayCellsChart.litCount(v, max: maxValue, rows: rows) }
 
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE"; return f
+    }()
+    static func weekday(_ d: Date) -> String { weekdayFormatter.string(from: d).uppercased() }   // SUN…SAT
+
     static func litCount(_ v: Int, max m: Int, rows: Int = 10) -> Int {
         guard v > 0, m > 0 else { return 0 }
         return Swift.max(1, Swift.min(rows, Int((Double(v) / Double(m) * Double(rows)).rounded())))
@@ -254,8 +259,11 @@ struct DayCellsChart: View {
                             }
                         }
                         .help("\(d.date.formatted(.dateTime.month().day()))：\(compactNumber(d.tokens.total))")
-                        Text(d.date.formatted(.dateTime.weekday(.narrow)))
-                            .font(.caption2).foregroundStyle(Calendar.current.isDateInToday(d.date) ? .primary : .secondary)
+                        let today = Calendar.current.isDateInToday(d.date)
+                        Text(Self.weekday(d.date))
+                            .font(.system(size: 9, weight: today ? .bold : .medium, design: .monospaced))
+                            .foregroundStyle(today ? .primary : .secondary)
+                            .lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .frame(maxWidth: .infinity)
                 }
