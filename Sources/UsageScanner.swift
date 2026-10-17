@@ -24,6 +24,7 @@ actor UsageScanner {
 
     func scanAll(claude5hLimit: Int) -> [ServiceSummary] {
         var c = scanClaude(), x = scanCodex()
+        c.account = account(.claude); x.account = account(.codex)
         prune()
         // Claude: Claude Code-style 5h block from local jsonl (may be overridden by API resets_at later)
         if let b = claudeBlock() {
@@ -79,6 +80,38 @@ actor UsageScanner {
         }
         guard let start, Date() < start.addingTimeInterval(5 * 3600) else { return nil }
         return (start, windowTokens(.claude, since: start))
+    }
+
+    // MARK: - Logged-in account (read-only; only the email is extracted, tokens never stored or logged)
+
+    private var accountCache: [Service: (Date?, String?)] = [:]
+
+    private func account(_ svc: Service) -> String? {
+        let path = home.path + (svc == .claude ? "/.claude.json" : "/.codex/auth.json")
+        let m = attrs(path).mtime
+        if let c = accountCache[svc], c.0 == m { return c.1 }
+        var email: String?
+        if let data = fm.contents(atPath: path),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            switch svc {
+            case .claude:
+                email = (obj["oauthAccount"] as? [String: Any])?["emailAddress"] as? String
+            case .codex:
+                if let jwt = (obj["tokens"] as? [String: Any])?["id_token"] as? String {
+                    let parts = jwt.split(separator: ".")
+                    if parts.count > 1 {
+                        var b = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+                        b += String(repeating: "=", count: (4 - b.count % 4) % 4)
+                        if let pd = Data(base64Encoded: b),
+                           let payload = try? JSONSerialization.jsonObject(with: pd) as? [String: Any] {
+                            email = payload["email"] as? String
+                        }
+                    }
+                }
+            }
+        }
+        accountCache[svc] = (m, email)
+        return email
     }
 
     private func codexWindow(_ any: Any?) -> RateWindow? {

@@ -53,6 +53,7 @@ struct ServiceSummary: Sendable, Identifiable {
     var sourceNote: String = ""
     var fileCount = 0
     var rate: RateInfo?
+    var account: String?
     var periodTokens: Int?
     var periodStart: Date?
     var periodSource: String?

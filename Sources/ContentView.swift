@@ -107,7 +107,12 @@ struct ServiceCard: View {
                     .resizable().scaledToFit()
                     .frame(width: 18, height: 18)
                 Text(summary.service.displayName).font(.subheadline.weight(.semibold))
-                Spacer()
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                if let a = summary.account {
+                    Text(a).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
             }
             rateSection
             if let p = summary.periodTokens {
