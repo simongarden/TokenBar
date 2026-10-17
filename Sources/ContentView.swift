@@ -126,7 +126,7 @@ struct ServiceCard: View {
                 .padding(.top, 2)
                 breakdown(summary.month)
                     .padding(.bottom, 11)
-                DayCellsChart(days: summary.last7, colors: cellColors)
+                DayCellsChart(days: summary.last7, colors: [.primary])
             } else {
                 Label(summary.reason ?? "無資料", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.secondary)
@@ -185,16 +185,6 @@ struct ServiceCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Colors for lit cells, index 0 = top cell.
-    private var cellColors: [Color] {
-        switch summary.service {
-        case .claude: return [Color(.sRGB, red: 0xD9/255.0, green: 0x77/255.0, blue: 0x57/255.0)]
-        case .codex: return [0xB1A7FF, 0x7A9DFF, 0x3941FF].map { v in
-            Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
-        }
-        }
-    }
-
     private func breakdown(_ t: TokenBreakdown) -> some View {
         HStack(spacing: 10) {
             Text("本月").foregroundStyle(.secondary)
@@ -227,7 +217,7 @@ struct DayCellsChart: View {
     }
     /// Color for cell at row r (0 = top) by interpolating the stops.
     private func color(row r: Int) -> Color {
-        guard colors.count > 1 else { return colors.first ?? .accentColor }
+        guard colors.count > 1 else { return colors.first ?? .primary }
         let t = Double(r) / Double(rows - 1) * Double(colors.count - 1)
         let i = min(Int(t), colors.count - 2)
         let f = t - Double(i)
