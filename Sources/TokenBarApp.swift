@@ -178,6 +178,11 @@ struct TokenBarApp: App {
             let store = UsageStore()
             Task { @MainActor in
                 while store.lastUpdated == nil { try? await Task.sleep(for: .milliseconds(200)) }
+                for sm in store.summaries {
+                    let m = sm.last7.map(\.tokens.total).max() ?? 0
+                    let row = sm.last7.map { "\($0.date.formatted(.dateTime.month(.defaultDigits).day())) \(compactNumber($0.tokens.total))=\(DayCellsChart.litCount($0.tokens.total, max: m))" }
+                    print("\(sm.service.rawValue): " + row.joined(separator: ", "))
+                }
                 let view = ContentView(store: store).background(Color(nsColor: .windowBackgroundColor))
                     .environment(\.colorScheme, .dark)
                 let r = ImageRenderer(content: view)

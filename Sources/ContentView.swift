@@ -131,7 +131,8 @@ struct ServiceCard: View {
                 .padding(.top, 2)
                 breakdown(summary.month)
                     .padding(.bottom, 11)
-                DayCellsChart(days: summary.last7, colors: [.primary])
+                DayCellsChart(days: summary.last7, colors: [])
+                    .compositingGroup()   // keep explicit colors out of glass vibrancy
             } else {
                 Label(summary.reason ?? "無資料", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.secondary)
@@ -212,14 +213,19 @@ struct ServiceCard: View {
 /// 7 day columns × 10 rounded cells; busiest day = 10 lit, others proportional (≥1 if > 0).
 struct DayCellsChart: View {
     let days: [DailyUsage]
-    let colors: [Color]          // gradient stops top → bottom (1 = solid)
+    let colors: [Color]          // unused now (lit cells are neutral white/black)
+    @Environment(\.colorScheme) private var scheme
     private let rows = 10
 
     private var maxValue: Int { days.map(\.tokens.total).max() ?? 0 }
-    private func lit(_ v: Int) -> Int {
-        guard v > 0, maxValue > 0 else { return 0 }
-        return max(1, Int((Double(v) / Double(maxValue) * Double(rows)).rounded()))
+    private func lit(_ v: Int) -> Int { DayCellsChart.litCount(v, max: maxValue, rows: rows) }
+
+    static func litCount(_ v: Int, max m: Int, rows: Int = 10) -> Int {
+        guard v > 0, m > 0 else { return 0 }
+        return Swift.max(1, Swift.min(rows, Int((Double(v) / Double(m) * Double(rows)).rounded())))
     }
+    private var litColor: Color { scheme == .dark ? Color.white.opacity(0.95) : Color.black.opacity(0.85) }
+    private var unlitColor: Color { scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.10) }
     /// Color for cell at row r (0 = top) by interpolating the stops.
     private func color(row r: Int) -> Color {
         guard colors.count > 1 else { return colors.first ?? .primary }
@@ -243,7 +249,7 @@ struct DayCellsChart: View {
                         VStack(spacing: 2) {
                             ForEach(0..<rows, id: \.self) { r in
                                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                                    .fill(rows - r <= n ? AnyShapeStyle(color(row: r)) : AnyShapeStyle(Color.primary.opacity(0.18)))
+                                    .fill(rows - r <= n ? litColor : unlitColor)
                                     .frame(height: 4)
                             }
                         }
