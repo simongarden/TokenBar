@@ -1,0 +1,3 @@
+// Signing team for local builds. Put `DEVELOPMENT_TEAM = <your team ID>` in
+// Config/Signing.local.xcconfig (gitignored). Scripts/release.sh passes the team itself.
+#include? "Signing.local.xcconfig"
