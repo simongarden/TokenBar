@@ -100,15 +100,16 @@ struct MenuBarLabelContent: View {
                     if let r = meterRate(s), let p = r.primary {
                         if let w = r.secondary {
                             VStack(spacing: 2) {
-                                SegmentMeter(percent: p.usedPercent, color: mono, height: 6)
-                                SegmentMeter(percent: w.usedPercent, color: mono, height: 6)
+                                SegmentMeter(percent: p.usedPercent, color: mono, height: 6, fills: fills(s.service))
+                                SegmentMeter(percent: w.usedPercent, color: mono, height: 6, fills: fills(s.service))
                             }
                         } else {
-                            SegmentMeter(percent: p.usedPercent, color: mono, height: 12)
+                            SegmentMeter(percent: p.usedPercent, color: mono, height: 12, fills: fills(s.service))
                         }
                     } else {
                         Text(text(s)).lineLimit(1).fixedSize()
                             .font(.system(size: 12, weight: .medium).monospacedDigit())
+                            .foregroundStyle(textStyle(s.service))
                     }
                 }
             }
@@ -120,6 +121,19 @@ struct MenuBarLabelContent: View {
         .foregroundStyle(mono)
         .padding(.horizontal, 1)
         .fixedSize()
+    }
+
+    /// Brand colors for filled segments while active (nil = monochrome).
+    private func fills(_ svc: Service) -> [Color]? {
+        active.contains(svc) ? svc.segmentColors : nil
+    }
+
+    private func textStyle(_ svc: Service) -> AnyShapeStyle {
+        guard active.contains(svc) else { return AnyShapeStyle(mono) }
+        let c = svc.segmentColors
+        return c.count > 1 && c.first != c.last
+            ? AnyShapeStyle(LinearGradient(colors: c, startPoint: .leading, endPoint: .trailing))
+            : AnyShapeStyle(c[0])
     }
 
     /// Percentage tier → draw meters instead of text (estimates included).
@@ -229,14 +243,28 @@ struct SegmentMeter: View {
     let percent: Double
     let color: Color
     let height: CGFloat
+    var fills: [Color]? = nil
     var filled: Int { percent <= 0 ? 0 : min(5, Int((percent / 20).rounded(.up))) }
     var body: some View {
         HStack(spacing: 1.5) {
             ForEach(0..<5, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(color.opacity(i < filled ? 1 : 0.25))
+                    .fill(i < filled ? (fills?[i] ?? color) : color.opacity(0.25))
                     .frame(width: 3, height: height)
             }
+        }
+    }
+}
+
+extension Service {
+    /// Per-segment brand colors (left → right).
+    var segmentColors: [Color] {
+        func hex(_ v: UInt32) -> Color {
+            Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+        }
+        switch self {
+        case .claude: return Array(repeating: hex(0xD97757), count: 5)   // claude-color.svg
+        case .codex: return [0xB1A7FF, 0x96A2FF, 0x7A9DFF, 0x5A6FFF, 0x3941FF].map(hex)   // Codex gradient
         }
     }
 }
