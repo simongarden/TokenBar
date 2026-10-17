@@ -99,12 +99,12 @@ struct MenuBarLabelContent: View {
                     .frame(width: 14, height: 14)
                     if let r = meterRate(s), let p = r.primary {
                         if let w = r.secondary {
-                            VStack(spacing: 2) {
-                                SegmentMeter(percent: p.usedPercent, color: mono, height: 6, fills: fills(s.service))
-                                SegmentMeter(percent: w.usedPercent, color: mono, height: 6, fills: fills(s.service))
+                            VStack(alignment: .leading, spacing: 2) {
+                                meterRow(p, height: 6, text: countdown(p.resetsAt, weekly: false), size: 8, svc: s.service)
+                                meterRow(w, height: 6, text: countdown(w.resetsAt, weekly: true), size: 8, svc: s.service)
                             }
                         } else {
-                            SegmentMeter(percent: p.usedPercent, color: mono, height: 12, fills: fills(s.service))
+                            meterRow(p, height: 12, text: countdown(p.resetsAt, weekly: (p.windowMinutes ?? 0) > 1440), size: 10, svc: s.service)
                         }
                     } else {
                         Text(text(s)).lineLimit(1).fixedSize()
@@ -121,6 +121,17 @@ struct MenuBarLabelContent: View {
         .foregroundStyle(mono)
         .padding(.horizontal, 1)
         .fixedSize()
+    }
+
+    private func meterRow(_ w: RateWindow, height: CGFloat, text: String?, size: CGFloat, svc: Service) -> some View {
+        HStack(spacing: 3) {
+            SegmentMeter(percent: w.usedPercent, color: mono, height: height, fills: fills(svc))
+            if let text {
+                Text(text).font(.system(size: size, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(textStyle(svc)).lineLimit(1).fixedSize()
+                    .frame(height: height, alignment: .center)
+            }
+        }
     }
 
     /// Brand colors for filled segments while active (nil = monochrome).
@@ -184,6 +195,10 @@ struct TokenBarApp: App {
             MainActor.assumeIsolated { self?.redraw() }
         }
         track()
+        // Countdown text: redraw once a minute; cached image is reused unless the strings changed.
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.redraw() } }
+        t.tolerance = 5
+        RunLoop.main.add(t, forMode: .common)
     }
 
     @objc private func toggle() {
@@ -210,7 +225,10 @@ struct TokenBarApp: App {
         let dark = (item.button?.effectiveAppearance ?? NSApp.effectiveAppearance)
             .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let active = store.active
-        let texts = store.summaries.map { "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)" }.joined(separator: ";")
+        let texts = store.summaries.map {
+            "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)|" +
+            "\(countdown($0.rate?.primary?.resetsAt, weekly: false) ?? "")|\(countdown($0.rate?.secondary?.resetsAt, weekly: true) ?? "")"
+        }.joined(separator: ";")
         let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)|g\(store.grokActive)"
         let img = LabelCache.shared.image(base: base, frame: 0) {
             let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active, grok: store.grokActive,
@@ -267,4 +285,15 @@ extension Service {
         case .codex: return [0xB1A7FF, 0x96A2FF, 0x7A9DFF, 0x5A6FFF, 0x3941FF].map(hex)   // Codex gradient
         }
     }
+}
+
+/// Time until reset: 5h window → "3h20m"/"45m"; weekly → "2d6h"/"5h". nil if unknown or passed.
+func countdown(_ date: Date?, weekly: Bool, now: Date = Date()) -> String? {
+    guard let date, date > now else { return nil }
+    let mins = Int((date.timeIntervalSince(now) / 60).rounded(.up))
+    if weekly {
+        let h = Int((Double(mins) / 60).rounded(.up))
+        return h >= 24 ? "\(h / 24)d\(h % 24)h" : "\(h)h"
+    }
+    return mins >= 60 ? "\(mins / 60)h\(mins % 60)m" : "\(mins)m"
 }
