@@ -23,20 +23,22 @@ actor ActivityMonitor {
 
     private let disabled = ProcessInfo.processInfo.environment["TOKENBAR_NO_ACTIVITY"] == "1"   // debug: measure idle CPU
 
-    func poll() -> Reading {
+    func poll(enabled: Set<Service>, grok: Bool) -> Reading {
         if disabled { return Reading(active: [], detail: [:]) }
-        var r = Reading(active: forced, detail: [:])
+        var r = Reading(active: forced.intersection(enabled), detail: [:])
         for s in forced { r.detail[s] = "debug 強制" }
-        let cpu = processCPU()
+        let cpu = enabled.isEmpty ? [:] : processCPU()
         let now = Date()
-        let files: [Service: Date?] = [.claude: newestClaude(), .codex: newestCodex()]
-        for s in Service.allCases {
+        var files: [Service: Date?] = [:]
+        if enabled.contains(.claude) { files[.claude] = newestClaude() }
+        if enabled.contains(.codex) { files[.codex] = newestCodex() }
+        for s in enabled {
             var why: [String] = []
             if let m = files[s] ?? nil, now.timeIntervalSince(m) < fileWindow { why.append("記錄檔 \(Int(now.timeIntervalSince(m)))s 前更新") }
             if let c = cpu[s], c > 0 { why.append(String(format: "CLI CPU %.0f%%", c)) }
             if !why.isEmpty { r.active.insert(s); r.detail[s] = why.joined(separator: "、") }
         }
-        r.grok = grokBotBusy()
+        r.grok = grok ? grokBotBusy() : nil
         return r
     }
 

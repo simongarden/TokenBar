@@ -77,6 +77,10 @@ struct ContentView: View {
                     }
                 }
             Spacer()
+            Button { WindowManager.shared.showSettings() } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.glass).help("設定")
             Button {
                 Task { await store.refresh() }
             } label: {

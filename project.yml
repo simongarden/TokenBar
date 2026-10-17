@@ -21,7 +21,7 @@ targets:
       path: Sources/Info.plist
       properties:
         LSUIElement: true
-        CFBundleDisplayName: TokenBar
+        CFBundleDisplayName: AI Token Status
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         LSApplicationCategoryType: public.app-category.developer-tools

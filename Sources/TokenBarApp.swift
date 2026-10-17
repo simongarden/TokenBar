@@ -31,6 +31,12 @@ final class UsageStore {
                 try? await Task.sleep(for: .seconds(30))
             }
         }
+        NotificationCenter.default.addObserver(forName: .tokenBarPrefsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task { await self.refresh(); await self.pollActivity() }
+            }
+        }
         activityLoop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.pollActivity()
@@ -43,8 +49,8 @@ final class UsageStore {
         guard !isRefreshing else { return }
         isRefreshing = true
         let d = UserDefaults.standard
-        var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit))
-        if d.bool(forKey: SettingsKey.claudeOAuth) {
+        var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit), enabled: Prefs.enabledServices)
+        if Prefs.claudeAPI && Prefs.isEnabled(.claude) {
             let (rate, st) = await claudeClient.fetch()
             claudeStatus = st
             if let rate, let i = s.firstIndex(where: { $0.service == .claude }) {
@@ -63,7 +69,7 @@ final class UsageStore {
     }
 
     private func pollActivity() async {
-        let r = await activity.poll()
+        let r = await activity.poll(enabled: Prefs.enabledServices, grok: Prefs.grokEnabled)
         activityDetail = r.detail
         if (r.grok != nil) != grokActive {
             grokActive = r.grok != nil
@@ -183,9 +189,17 @@ struct TokenBarApp: App {
                     let row = sm.last7.map { "\($0.date.formatted(.dateTime.month(.defaultDigits).day())) \(compactNumber($0.tokens.total))=\(DayCellsChart.litCount($0.tokens.total, max: m))" }
                     print("\(sm.service.rawValue): " + row.joined(separator: ", "))
                 }
-                let view = ContentView(store: store).background(Color(nsColor: .windowBackgroundColor))
-                    .environment(\.colorScheme, .dark)
-                let r = ImageRenderer(content: view)
+                let name = ProcessInfo.processInfo.environment["TOKENBAR_SNAPSHOT_VIEW"] ?? "popover"
+                let view: AnyView
+                if name.hasPrefix("onboard"), let n = Int(name.dropFirst(7)) {
+                    view = AnyView(OnboardingView(initialStep: n) {}.environment(store).frame(width: 520, height: 440))
+                } else if name == "settings" {
+                    view = AnyView(SettingsView().frame(width: 520, height: 440))
+                } else {
+                    view = AnyView(ContentView(store: store))
+                }
+                let wrapped = view.background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .dark)
+                let r = ImageRenderer(content: wrapped)
                 r.scale = 2
                 if let img = r.nsImage, let tiff = img.tiffRepresentation,
                    let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
@@ -195,7 +209,11 @@ struct TokenBarApp: App {
             }
             return
         }
-        controller = StatusController(store: UsageStore())
+        Prefs.migrateIfNeeded()
+        let store = UsageStore()
+        WindowManager.shared.store = store
+        controller = StatusController(store: store)
+        if !Prefs.onboardingDone { WindowManager.shared.showOnboarding() }
     }
 }
 
@@ -213,6 +231,9 @@ struct TokenBarApp: App {
         item.button?.target = self
         item.button?.action = #selector(toggle)
         item.button?.imagePosition = .imageOnly
+        NotificationCenter.default.addObserver(forName: .tokenBarClosePopover, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        }
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePopover() }
         }

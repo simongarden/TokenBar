@@ -22,9 +22,12 @@ actor UsageScanner {
     }()
     private let iso = ISO8601DateFormatter()
 
-    func scanAll(claude5hLimit: Int) -> [ServiceSummary] {
-        var c = scanClaude(), x = scanCodex()
-        c.account = account(.claude); x.account = account(.codex)
+    func scanAll(claude5hLimit: Int, enabled: Set<Service>) -> [ServiceSummary] {
+        // Disabled providers are not scanned at all.
+        var c = enabled.contains(.claude) ? scanClaude() : ServiceSummary(service: .claude, available: false)
+        var x = enabled.contains(.codex) ? scanCodex() : ServiceSummary(service: .codex, available: false)
+        if enabled.contains(.claude) { c.account = account(.claude) }
+        if enabled.contains(.codex) { x.account = account(.codex) }
         prune()
         // Claude: Claude Code-style 5h block from local jsonl (may be overridden by API resets_at later)
         if let b = claudeBlock() {
@@ -50,7 +53,7 @@ actor UsageScanner {
             x.periodTokens = windowTokens(.codex, since: start).total
             x.periodSource = "限額視窗（\(start.formatted(date: .omitted, time: .shortened)) 起）"
         }
-        return [c, x]
+        return [c, x].filter { enabled.contains($0.service) }
     }
 
     private func prune() {

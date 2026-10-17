@@ -14,6 +14,7 @@
 		B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */; };
 		EF88FFC6C460D14B128A7FBB /* UsageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */; };
 		F147868DCF8C173A84C8CC88 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D46F3C00BDD605AB05EB6 /* Models.swift */; };
+		F8BA709415DA0E075368B49E /* Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADC46882FE02504741FDE60 /* Onboarding.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		3C4D46F3C00BDD605AB05EB6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
+		AADC46882FE02504741FDE60 /* Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding.swift; sourceTree = "<group>"; };
 		AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMonitor.swift; sourceTree = "<group>"; };
 		D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClient.swift; sourceTree = "<group>"; };
@@ -38,6 +40,7 @@
 				AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */,
 				37E91E36B21661262CBA3970 /* Info.plist */,
 				3C4D46F3C00BDD605AB05EB6 /* Models.swift */,
+				AADC46882FE02504741FDE60 /* Onboarding.swift */,
 				04CC43735E1B18053CB68912 /* TokenBarApp.swift */,
 				8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */,
 			);
@@ -135,6 +138,7 @@
 				386B6DC565D2FCFFDF0EF37D /* ClaudeUsageClient.swift in Sources */,
 				B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */,
 				F147868DCF8C173A84C8CC88 /* Models.swift in Sources */,
+				F8BA709415DA0E075368B49E /* Onboarding.swift in Sources */,
 				7AD4F25EB31CDF16D3BFBB3A /* TokenBarApp.swift in Sources */,
 				EF88FFC6C460D14B128A7FBB /* UsageScanner.swift in Sources */,
 			);
