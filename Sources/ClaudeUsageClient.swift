@@ -33,9 +33,35 @@ actor ClaudeUsageClient {
         set { UserDefaults.standard.set(newValue, forKey: Self.backoffKey) }
     }
 
+    private static let savedKey = "claudeAPILastResult"
+
+    private func save(_ r: RateInfo) {
+        var d: [String: Any] = ["fetched": r.updatedAt ?? Date()]
+        if let p = r.primary { d["p"] = p.usedPercent; d["pr"] = p.resetsAt }
+        if let w = r.secondary { d["w"] = w.usedPercent; d["wr"] = w.resetsAt }
+        UserDefaults.standard.set(d.compactMapValues { $0 }, forKey: Self.savedKey)
+    }
+
+    /// Last successful result from disk; a window whose reset time has passed counts as 0%.
+    private func loadSaved() -> RateInfo? {
+        guard let d = UserDefaults.standard.dictionary(forKey: Self.savedKey) else { return nil }
+        let now = Date()
+        func win(_ k: String, _ rk: String, _ mins: Int) -> RateWindow? {
+            guard let u = d[k] as? Double else { return nil }
+            let r = d[rk] as? Date
+            if let r, r < now { return RateWindow(usedPercent: 0, windowMinutes: mins, resetsAt: nil) }
+            return RateWindow(usedPercent: u, windowMinutes: mins, resetsAt: r)
+        }
+        let fetched = d["fetched"] as? Date
+        return RateInfo(primary: win("p", "pr", 300), secondary: win("w", "wr", 10080), isEstimate: false,
+                        source: "Anthropic OAuth /api/oauth/usage（快取 \(fetched?.formatted(date: .omitted, time: .shortened) ?? "")）",
+                        updatedAt: fetched)
+    }
+
     /// Returns the last result without calling the API unless the throttle window has passed.
     func fetch() async -> (RateInfo?, Status) {
         let now = Date()
+        if cached == nil, let saved = loadSaved() { cached = saved; lastStatus = .ok }
         if now < nextAllowed {
             if cached != nil { return (cached, .ok) }
             if case .ok = lastStatus { return (cached, .ok) }
@@ -103,6 +129,7 @@ actor ClaudeUsageClient {
             cached = RateInfo(primary: win("five_hour", 300), secondary: win("seven_day", 10080),
                               isEstimate: false, source: "Anthropic OAuth /api/oauth/usage", updatedAt: Date())
             lastStatus = .ok
+            if let cached { save(cached) }
             return (cached, .ok)
         } catch {
             nextAllowed = Date().addingTimeInterval(successInterval)
