@@ -23,7 +23,6 @@ struct ContentView: View {
                     ForEach(store.summaries) { ServiceCard(summary: $0, rateNote: rateNote(for: $0)) }
                 }
             }
-            SettingsSection()
             footer
         }
         .padding(12)
@@ -43,14 +42,14 @@ struct ContentView: View {
             case .expired?: "Claude Code 憑證已過期（開啟 Claude Code 後會自動更新）"
             case .waiting(let d)?: "API 限流中，\(d.formatted(date: .omitted, time: .shortened)) 後再試"
             }
-            return s.rate == nil ? "\(st)；可在設定填入 5 小時 token 上限以估算" : st
+            return s.rate == nil ? "\(st)" : st
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"
         }
     }
 
     private var header: some View {
         HStack {
-            Label("AI Token 用量", systemImage: "chart.bar.xaxis")
+            Label("AI Token Status", systemImage: "chart.bar.xaxis")
                 .font(.headline)
             Spacer()
             if let t = store.lastUpdated {
@@ -104,13 +103,6 @@ struct ServiceCard: View {
                     .frame(width: 18, height: 18)
                 Text(summary.service.displayName).font(.subheadline.weight(.semibold))
                 Spacer()
-                let mv = summary.mixedValue
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text(mv.text)
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(summary.service.tint)
-                    Text("選單列：" + mv.kind.rawValue).font(.caption2).foregroundStyle(.secondary)
-                }
             }
             rateSection
             if let p = summary.periodTokens {
@@ -127,6 +119,7 @@ struct ServiceCard: View {
                     stat("本月", summary.month.total)
                 }
                 breakdown(summary.month)
+                    .padding(.bottom, 11)
                 Chart(summary.last7) { d in
                     BarMark(x: .value("日期", d.date, unit: .day),
                             y: .value("Token", d.tokens.total))
@@ -151,8 +144,6 @@ struct ServiceCard: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text(summary.sourceNote)
-                .font(.caption2).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
         }
         .padding(10)
         .glassEffect(.regular, in: .rect(cornerRadius: 14))
@@ -163,8 +154,6 @@ struct ServiceCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 if let p = r.primary { windowRow(p, title: p.windowMinutes == 1440 ? "每日" : "5 小時", est: r.isEstimate) }
                 if let w = r.secondary { windowRow(w, title: "每週", est: r.isEstimate) }
-                Text((r.isEstimate ? "估計值 · " : "實際值 · ") + r.source)
-                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
             }
         } else {
             Label("用量百分比：— " + rateNote, systemImage: "gauge.with.dots.needle.0percent")
@@ -212,33 +201,5 @@ struct ServiceCard: View {
             Image(systemName: sym).foregroundStyle(.secondary)
             Text("\(title) \(compactNumber(n))").monospacedDigit()
         }
-    }
-}
-
-struct SettingsSection: View {
-    @AppStorage(SettingsKey.labelMode) private var modeRaw = LabelMode.mixed.rawValue
-    @AppStorage(SettingsKey.claudeOAuth) private var claudeOAuth = true
-    @AppStorage(SettingsKey.claude5hLimit) private var claudeLimit = 0
-
-    var body: some View {
-        DisclosureGroup("設定") {
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("選單列顯示", selection: $modeRaw) {
-                    Text("混合").tag(LabelMode.mixed.rawValue)
-                    Text("用量 %").tag(LabelMode.percent.rawValue)
-                    Text("今日 Token").tag(LabelMode.tokens.rawValue)
-                }
-                .pickerStyle(.segmented)
-                Toggle("Claude 使用官方用量 API（需鑰匙圈授權）", isOn: $claudeOAuth)
-                    .toggleStyle(.switch).controlSize(.mini)
-                LabeledContent("Claude 5 小時 token 上限（估算，0=停用）") {
-                    TextField("0", value: $claudeLimit, format: .number).frame(width: 90)
-                }
-                Text("設定會在下次更新時套用").font(.caption2).foregroundStyle(.tertiary)
-            }
-            .font(.caption)
-            .padding(.top, 4)
-        }
-        .font(.caption)
     }
 }

@@ -19,7 +19,7 @@ enum Service: String, CaseIterable, Sendable, Identifiable {
     var displayName: String {
         switch self {
         case .claude: "Claude Code"
-        case .codex: "Codex"
+        case .codex: "ChatGPT / Codex"
         }
     }
     var logoMono: String {

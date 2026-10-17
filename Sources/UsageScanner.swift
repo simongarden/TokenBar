@@ -47,7 +47,7 @@ actor UsageScanner {
             let start = r.addingTimeInterval(-Double(m) * 60)
             x.periodStart = start
             x.periodTokens = windowTokens(.codex, since: start).total
-            x.periodSource = "Codex 限額視窗（\(start.formatted(date: .omitted, time: .shortened)) 起）"
+            x.periodSource = "限額視窗（\(start.formatted(date: .omitted, time: .shortened)) 起）"
         }
         return [c, x]
     }
