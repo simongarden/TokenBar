@@ -160,6 +160,7 @@ actor ClaudeUsageClient {
                                 kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
         let st = SecItemCopyMatching(q as CFDictionary, &out)
+        if st != errSecSuccess { clog.notice("keychain read OSStatus=\(st, privacy: .public)") }
         if st == errSecItemNotFound { return .failure(.noCredential) }
         guard st == errSecSuccess, let data = out as? Data,
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

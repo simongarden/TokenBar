@@ -1,3 +1,5 @@
+import LocalAuthentication
+import OSLog
 import SwiftUI
 import AppKit
 import Security
@@ -92,23 +94,67 @@ enum ProviderDetector {
         ]
     }
 
-    /// Triggers the Keychain read (system prompt). Returns nil on success, else a reason.
-    nonisolated static func authorizeClaudeKeychain() async -> String? {
-        await Task.detached {
-            let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: "Claude Code-credentials",
-                                    kSecReturnData as String: true,
-                                    kSecMatchLimit as String: kSecMatchLimitOne]
-            var out: CFTypeRef?
-            let st = SecItemCopyMatching(q as CFDictionary, &out)
-            switch st {
-            case errSecSuccess: return nil
-            case errSecItemNotFound: return "找不到 Claude Code 憑證（請先在終端機執行 claude 並登入）"
-            default: return "已拒絕"
+    /// Keychain access result for the onboarding/settings UI.
+    enum KeychainAuth: Equatable, Sendable {
+        case ok, notFound, denied, error(Int32)
+        var message: String {
+            switch self {
+            case .ok: "成功"
+            case .notFound: "找不到憑證（請先在終端機執行 claude 並登入）"
+            case .denied: "已拒絕"
+            case .error(let c): "錯誤碼 \(c)"
             }
-        }.value
+        }
+    }
+
+    static func classify(_ st: OSStatus) -> KeychainAuth {
+        switch st {
+        case errSecSuccess: .ok
+        case errSecItemNotFound: .notFound
+        case errSecUserCanceled, errSecAuthFailed: .denied   // -128 / -25293
+        default: .error(st)
+        }
+    }
+
+    /// Triggers the Keychain read so macOS shows its access prompt. The app is
+    /// activated first: an LSUIElement app that isn't frontmost can get
+    /// errSecInteractionNotAllowed (-25308) instead of a prompt.
+    @MainActor static func authorizeClaudeKeychain() async -> KeychainAuth {
+        NSApp.activate()
+        try? await Task.sleep(for: .milliseconds(150))
+        let st: OSStatus = await Task.detached { keychainStatus(allowUI: true) }.value
+        klog.notice("keychain authorize OSStatus=\(st, privacy: .public)")
+        return classify(st)
+    }
+
+    /// Reads the item (data discarded immediately, never logged); returns only the status.
+    nonisolated static func keychainStatus(allowUI: Bool) -> OSStatus {
+        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: "Claude Code-credentials",
+                                kSecReturnData as String: true,
+                                kSecMatchLimit as String: kSecMatchLimitOne]
+        if !allowUI {
+            let ctx = LAContext(); ctx.interactionNotAllowed = true
+            q[kSecUseAuthenticationContext as String] = ctx
+        }
+        var out: CFTypeRef?
+        let st = SecItemCopyMatching(q as CFDictionary, &out)
+        out = nil
+        return st
+    }
+
+    /// Existence check that never needs ACL approval (attributes only).
+    nonisolated static func keychainItemExists() -> OSStatus {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: "Claude Code-credentials",
+                                kSecReturnAttributes as String: true,
+                                kSecMatchLimit as String: kSecMatchLimitOne]
+        var out: CFTypeRef?
+        return SecItemCopyMatching(q as CFDictionary, &out)
     }
 }
+
+private let klog = Logger(subsystem: "com.okmaster.TokenBar", category: "keychain")
 
 // MARK: - Window manager
 
@@ -145,7 +191,8 @@ enum ProviderDetector {
         w.isMovableByWindowBackground = true
         w.contentViewController = NSHostingController(rootView: view.frame(width: 520, height: 440))
         w.setContentSize(NSSize(width: 520, height: 440))
-        if let scr = NSScreen.main {   // center on the main display
+        let mouse = NSEvent.mouseLocation   // center on the screen under the pointer
+        if let scr = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main {
             let f = scr.visibleFrame
             w.setFrameOrigin(NSPoint(x: f.midX - w.frame.width / 2, y: f.midY - w.frame.height / 2))
         }
@@ -194,7 +241,7 @@ struct OnboardingView: View {
     @Environment(UsageStore.self) private var store: UsageStore?
     @State private var step: Int
     @State private var sel: [String: Bool]
-    @State private var authResult: String?
+    @State private var authResult: ProviderDetector.KeychainAuth?
     @State private var authorizing = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     private let providers: [ProviderInfo]
@@ -261,23 +308,29 @@ struct OnboardingView: View {
             Text("按下「授權」後，macOS 會跳出鑰匙圈存取視窗，請選擇「永遠允許」。憑證只保存在記憶體中，不會寫入任何檔案。")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button {
-                    authorizing = true
-                    Task {
-                        let r = await ProviderDetector.authorizeClaudeKeychain()
-                        authResult = r == nil ? "成功" : r
-                        Prefs.claudeAPI = r == nil
-                        authorizing = false
-                    }
-                } label: { Label("授權", systemImage: "checkmark.shield") }
-                .modifier(GlassButton(prominent: true)).disabled(authorizing)
+                Button { runAuth() } label: {
+                    Label(authResult == nil || authResult == .ok ? "授權" : "重試",
+                          systemImage: authResult == nil || authResult == .ok ? "checkmark.shield" : "arrow.clockwise")
+                }
+                .modifier(GlassButton(prominent: true)).disabled(authorizing || authResult == .ok)
                 if authorizing { ProgressView().controlSize(.small) }
                 if let r = authResult {
-                    Label(r == "成功" ? "成功" : "\(r) — 將改用本機 token 統計",
-                          systemImage: r == "成功" ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(r == "成功" ? .green : .orange).font(.callout)
+                    Label(r == .ok ? "成功" : "\(r.message) — 將改用本機 token 統計",
+                          systemImage: r == .ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(r == .ok ? .green : .orange).font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    private func runAuth() {
+        authorizing = true
+        Task { @MainActor in
+            let r = await ProviderDetector.authorizeClaudeKeychain()
+            authResult = r
+            Prefs.claudeAPI = r == .ok
+            authorizing = false
         }
     }
 

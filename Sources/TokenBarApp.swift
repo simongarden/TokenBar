@@ -179,6 +179,11 @@ struct TokenBarApp: App {
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: StatusController?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.environment["TOKENBAR_KEYCHAIN_PROBE"] == "1" {
+            // Debug: status codes only, no UI, no secret output.
+            print("exists(attrs)=\(ProviderDetector.keychainItemExists()) read(noUI)=\(ProviderDetector.keychainStatus(allowUI: false))")
+            exit(0)
+        }
         if let path = ProcessInfo.processInfo.environment["TOKENBAR_SNAPSHOT"] {
             // Debug: render the popover content to PNG and exit (no status item).
             let store = UsageStore()
