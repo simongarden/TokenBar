@@ -85,31 +85,20 @@ actor ActivityMonitor {
 
     // MARK: files
 
-    private func mtime(_ path: String) -> Date? {
-        var st = stat()
-        guard stat(path, &st) == 0 else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec))
-    }
-
     private func newest(in dir: String, ext: Set<String>) -> Date? {
         guard let items = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
         var best: Date?
         for n in items where ext.contains((n as NSString).pathExtension) {
-            if let m = mtime(dir + "/" + n), m > (best ?? .distantPast) { best = m }
+            if let m = fileMtime(dir + "/" + n), m > (best ?? .distantPast) { best = m }
         }
         return best
     }
 
-    private func newestClaude() -> Date? {
-        let root = home.path + "/.claude/projects"
-        var best: Date?
-        for p in (try? fm.contentsOfDirectory(atPath: root)) ?? [] {
-            let dir = root + "/" + p
-            // project dir mtime changes when a session file is created; only descend into recent ones cheaply
-            if let m = newest(in: dir, ext: ["jsonl"]), m > (best ?? .distantPast) { best = m }
-        }
-        return best
-    }
+    /// Claude Code writes one jsonl per session under ~/.claude/projects/<project>/; there can be
+    /// thousands, so only hot files and project directories are stat'ed on each 2.5 s poll.
+    private lazy var claudeWatcher = RecentFileWatcher(root: home.path + "/.claude/projects")
+
+    private func newestClaude() -> Date? { claudeWatcher.newest() }
 
     private func newestCodex() -> Date? {
         let cal = Calendar.current

@@ -1,4 +1,3 @@
-import LocalAuthentication
 import OSLog
 import SwiftUI
 import AppKit
@@ -27,7 +26,7 @@ enum Prefs {
             d.removeObject(forKey: onboardingDoneKey); return
         }
         guard d.object(forKey: onboardingDoneKey) == nil else { return }
-        if d.object(forKey: "claudeAPILastResult") != nil || d.object(forKey: "claudeAPINextAllowed") != nil {
+        if d.object(forKey: ClaudeUsageClient.savedKey) != nil || d.object(forKey: ClaudeUsageClient.nextKey) != nil {
             for id in ["claude", "codex", "grok"] { setEnabled(id, true) }
             d.set(true, forKey: onboardingDoneKey)
         }
@@ -129,24 +128,13 @@ enum ProviderDetector {
 
     /// Reads the item (data discarded immediately, never logged); returns only the status.
     nonisolated static func keychainStatus(allowUI: Bool) -> OSStatus {
-        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                kSecAttrService as String: "Claude Code-credentials",
-                                kSecReturnData as String: true,
-                                kSecMatchLimit as String: kSecMatchLimitOne]
-        if !allowUI {
-            let ctx = LAContext(); ctx.interactionNotAllowed = true
-            q[kSecUseAuthenticationContext as String] = ctx
-        }
-        var out: CFTypeRef?
-        let st = SecItemCopyMatching(q as CFDictionary, &out)
-        out = nil
-        return st
+        ClaudeKeychain.copyData(allowUI: allowUI).0
     }
 
     /// Existence check that never needs ACL approval (attributes only).
     nonisolated static func keychainItemExists() -> OSStatus {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                kSecAttrService as String: "Claude Code-credentials",
+                                kSecAttrService as String: ClaudeKeychain.service,
                                 kSecReturnAttributes as String: true,
                                 kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
@@ -392,7 +380,14 @@ struct OnboardingView: View {
 struct SettingsView: View {
     @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: ["claude", "codex", "grok"].map { ($0, Prefs.isEnabled($0)) })
     @State private var claudeAPI = Prefs.claudeAPI
+    @State private var authorizing = false
+    @State private var authNote: String?
     private let providers = ProviderDetector.detect()
+
+    private func apply(_ on: Bool) {
+        Prefs.claudeAPI = on
+        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -404,12 +399,24 @@ struct SettingsView: View {
                     NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
                 }))
             }
-            Toggle("Claude 使用官方用量 API（需鑰匙圈授權）", isOn: $claudeAPI)
-                .toggleStyle(.switch)
-                .onChange(of: claudeAPI) { _, v in
-                    Prefs.claudeAPI = v
-                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+            HStack(spacing: 8) {
+                Toggle("Claude 使用官方用量 API（需鑰匙圈授權）", isOn: $claudeAPI)
+                    .toggleStyle(.switch).disabled(authorizing)
+                if authorizing { ProgressView().controlSize(.small) }
+            }
+            .onChange(of: claudeAPI) { _, v in
+                guard v else { apply(false); return }
+                // Background refreshes never prompt, so turning it on is where the Keychain prompt happens.
+                authorizing = true; authNote = nil
+                Task { @MainActor in
+                    let r = await ProviderDetector.authorizeClaudeKeychain()
+                    authorizing = false
+                    if r == .ok { apply(true) } else { authNote = "鑰匙圈授權失敗：\(r.message)"; claudeAPI = false }
                 }
+            }
+            if let n = authNote {
+                Text(n).font(.caption).foregroundStyle(.orange)
+            }
             Spacer()
             HStack {
                 Spacer()

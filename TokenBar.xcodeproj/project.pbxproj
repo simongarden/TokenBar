@@ -7,11 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2A30F07A2BC1153173C5690E /* RecentFileWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48FCAF8C994724DC871ADC /* RecentFileWatcherTests.swift */; };
 		386B6DC565D2FCFFDF0EF37D /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */; };
 		513582FAB0D9D356D68C5CED /* ActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */; };
 		59E9D028D190418BFF604ADC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */; };
+		71FC6EF255B037E9577DC166 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D46F3C00BDD605AB05EB6 /* Models.swift */; };
 		7AD4F25EB31CDF16D3BFBB3A /* TokenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CC43735E1B18053CB68912 /* TokenBarApp.swift */; };
+		A31A4A6E2E9C24810B2013B4 /* ClaudeUsageClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9351661D7EE98C8F3ABF2232 /* ClaudeUsageClientTests.swift */; };
+		A717DEE500F456E5B12751A0 /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F5B0F279A4F6C09210D581 /* RecentFileWatcher.swift */; };
+		AC0E540C01CD7489EFB87BB3 /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F5B0F279A4F6C09210D581 /* RecentFileWatcher.swift */; };
 		B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */; };
+		D6D85C76C2D34E0117C3F292 /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D714B77127383AD7E0D1E204 /* ClaudeUsageClient.swift */; };
 		EF88FFC6C460D14B128A7FBB /* UsageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */; };
 		F147868DCF8C173A84C8CC88 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D46F3C00BDD605AB05EB6 /* Models.swift */; };
 		F8BA709415DA0E075368B49E /* Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADC46882FE02504741FDE60 /* Onboarding.swift */; };
@@ -19,10 +25,14 @@
 
 /* Begin PBXFileReference section */
 		04CC43735E1B18053CB68912 /* TokenBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBarApp.swift; sourceTree = "<group>"; };
+		0A48FCAF8C994724DC871ADC /* RecentFileWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentFileWatcherTests.swift; sourceTree = "<group>"; };
 		37E91E36B21661262CBA3970 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		37F5B0F279A4F6C09210D581 /* RecentFileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentFileWatcher.swift; sourceTree = "<group>"; };
 		3C4D46F3C00BDD605AB05EB6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		7E9F89F3B7AEA40B03B10085 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7FCEBB531CF14BB13D5A42F7 /* TokenBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TokenBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
+		9351661D7EE98C8F3ABF2232 /* ClaudeUsageClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClientTests.swift; sourceTree = "<group>"; };
 		AADC46882FE02504741FDE60 /* Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding.swift; sourceTree = "<group>"; };
 		AE6E1831E10F8A8D0A8CC36D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B3406E75ADD635413A2BB7C2 /* ActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMonitor.swift; sourceTree = "<group>"; };
@@ -31,6 +41,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		3412DA2B9C58161A36FA1FA1 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				9351661D7EE98C8F3ABF2232 /* ClaudeUsageClientTests.swift */,
+				0A48FCAF8C994724DC871ADC /* RecentFileWatcherTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
 		A7852218F65306D6397AA28F /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -41,6 +60,7 @@
 				37E91E36B21661262CBA3970 /* Info.plist */,
 				3C4D46F3C00BDD605AB05EB6 /* Models.swift */,
 				AADC46882FE02504741FDE60 /* Onboarding.swift */,
+				37F5B0F279A4F6C09210D581 /* RecentFileWatcher.swift */,
 				04CC43735E1B18053CB68912 /* TokenBarApp.swift */,
 				8303BAE44ABBDDD56D7D2571 /* UsageScanner.swift */,
 			);
@@ -51,6 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				A7852218F65306D6397AA28F /* Sources */,
+				3412DA2B9C58161A36FA1FA1 /* Tests */,
 				FFB84DA4E38E744D734B034A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -59,6 +80,7 @@
 			isa = PBXGroup;
 			children = (
 				E1E82A1EE46FD1E7637C3943 /* TokenBar.app */,
+				7FCEBB531CF14BB13D5A42F7 /* TokenBarTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -66,6 +88,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0BF80752B81B2840A0FF8933 /* TokenBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D3D8CF80DFF6B7A2EB01ADB2 /* Build configuration list for PBXNativeTarget "TokenBarTests" */;
+			buildPhases = (
+				C976077B92859E7D68948FD7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TokenBarTests;
+			packageProductDependencies = (
+			);
+			productName = TokenBarTests;
+			productReference = 7FCEBB531CF14BB13D5A42F7 /* TokenBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		531D59D64152CE6396100035 /* TokenBar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F02FF9FBDA0222C31FF4C990 /* Build configuration list for PBXNativeTarget "TokenBar" */;
@@ -93,6 +132,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					0BF80752B81B2840A0FF8933 = {
+						DevelopmentTeam = YOUR_TEAM_ID;
+						ProvisioningStyle = Manual;
+					};
 					531D59D64152CE6396100035 = {
 						DevelopmentTeam = YOUR_TEAM_ID;
 						ProvisioningStyle = Manual;
@@ -114,6 +157,7 @@
 			projectRoot = "";
 			targets = (
 				531D59D64152CE6396100035 /* TokenBar */,
+				0BF80752B81B2840A0FF8933 /* TokenBarTests */,
 			);
 		};
 /* End PBXProject section */
@@ -139,8 +183,21 @@
 				B9E8E195BBF0EB240BBE1A6F /* ContentView.swift in Sources */,
 				F147868DCF8C173A84C8CC88 /* Models.swift in Sources */,
 				F8BA709415DA0E075368B49E /* Onboarding.swift in Sources */,
+				AC0E540C01CD7489EFB87BB3 /* RecentFileWatcher.swift in Sources */,
 				7AD4F25EB31CDF16D3BFBB3A /* TokenBarApp.swift in Sources */,
 				EF88FFC6C460D14B128A7FBB /* UsageScanner.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C976077B92859E7D68948FD7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D6D85C76C2D34E0117C3F292 /* ClaudeUsageClient.swift in Sources */,
+				A31A4A6E2E9C24810B2013B4 /* ClaudeUsageClientTests.swift in Sources */,
+				71FC6EF255B037E9577DC166 /* Models.swift in Sources */,
+				A717DEE500F456E5B12751A0 /* RecentFileWatcher.swift in Sources */,
+				2A30F07A2BC1153173C5690E /* RecentFileWatcherTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -318,6 +375,44 @@
 			};
 			name = Debug;
 		};
+		98ED76AFB326C73F9D987104 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.okmaster.TokenBarTests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		EE8E23872AA533FC3FCF0DF8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.okmaster.TokenBarTests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -326,6 +421,15 @@
 			buildConfigurations = (
 				867FFCD868191B6042F71F70 /* Debug */,
 				827533071850E4B0AE7707AD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D3D8CF80DFF6B7A2EB01ADB2 /* Build configuration list for PBXNativeTarget "TokenBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				98ED76AFB326C73F9D987104 /* Debug */,
+				EE8E23872AA533FC3FCF0DF8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

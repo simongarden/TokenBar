@@ -35,7 +35,7 @@ struct ContentView: View {
             case nil: "官方 API 已停用"
             case .ok?: ""
             case .noCredential?: "鑰匙圈找不到 Claude Code 憑證"
-            case .denied?: "鑰匙圈存取被拒"
+            case .denied?: "尚未授權讀取鑰匙圈（請到設定重新開啟官方用量 API）"
             case .httpError(let c)?: "API 錯誤 \(c)"
             case .failed?: "API 讀取失敗"
             case .expired?: "Claude Code 憑證已過期（開啟 Claude Code 後會自動更新）"

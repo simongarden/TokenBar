@@ -35,3 +35,21 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.okmaster.TokenBar
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_APP_SANDBOX: NO
+    scheme:
+      testTargets: [TokenBarTests]
+  TokenBarTests:
+    type: bundle.unit-test
+    platform: macOS
+    # Not hosted in the app (that would launch the menu bar item); compiles the tested sources directly.
+    sources:
+      - Tests
+      - Sources/Models.swift
+      - Sources/ClaudeUsageClient.swift
+      - Sources/RecentFileWatcher.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.okmaster.TokenBarTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        OTHER_CODE_SIGN_FLAGS: ""

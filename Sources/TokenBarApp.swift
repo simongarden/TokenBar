@@ -34,7 +34,10 @@ final class UsageStore {
         NotificationCenter.default.addObserver(forName: .tokenBarPrefsChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                Task { await self.refresh(); await self.pollActivity() }
+                Task {
+                    await self.claudeClient.credentialsChanged()
+                    await self.refresh(); await self.pollActivity()
+                }
             }
         }
         activityLoop = Task { [weak self] in
