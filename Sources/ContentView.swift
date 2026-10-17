@@ -171,9 +171,10 @@ struct ServiceCard: View {
     private func windowRow(_ w: RateWindow, title: String, est: Bool) -> some View {
         HStack(spacing: 6) {
             Text(title).font(.caption2).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
-            LimitBar(fraction: min(w.usedPercent, 100) / 100)
+            LimitBar(fraction: min(w.usedPercent, 100) / 100, fill: MeterStyle.fill(for: w.usedPercent))
             Text((est ? "~" : "") + "\(Int(w.usedPercent.rounded()))%")
                 .font(.caption.monospacedDigit().weight(.semibold)).frame(width: 40, alignment: .trailing)
+                .foregroundStyle(MeterStyle.textColor(for: w.usedPercent))
             if let r = w.resetsAt {
                 Text("重置 " + r.formatted(Calendar.current.isDateInToday(r)
                                             ? .dateTime.hour().minute() : .dateTime.month(.defaultDigits).day().hour().minute()))
@@ -278,17 +279,37 @@ struct CardBackground: ViewModifier {
 /// Shared fill so the limit bars and the 7-day cells are exactly the same gray.
 enum MeterStyle {
     static let fill = Color(nsColor: .secondaryLabelColor)
+
+    private static func dynamic(_ name: String, light: UInt32, dark: UInt32) -> Color {
+        func ns(_ v: UInt32) -> NSColor {
+            NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
+                    blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        }
+        return Color(nsColor: NSColor(name: NSColor.Name(name)) { ap in
+            ap.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? ns(dark) : ns(light)
+        })
+    }
+    static let warning = dynamic("TokenBarWarning", light: 0xB45309, dark: 0xF0A04B)   // >= 70%
+    static let danger = dynamic("TokenBarDanger", light: 0xC0362C, dark: 0xF07A6E)     // >= 90%
+
+    static func fill(for percent: Double) -> Color {
+        percent >= 90 ? danger : percent >= 70 ? warning : fill
+    }
+    static func textColor(for percent: Double) -> Color {
+        percent >= 90 ? danger : percent >= 70 ? warning : .primary
+    }
 }
 
 /// Custom limit bar (system ProgressView ignores tint in the non-key popover and renders its own gray).
 struct LimitBar: View {
     let fraction: Double
+    var fill: Color = MeterStyle.fill
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
                 Capsule().fill(scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.10))
-                Capsule().fill(MeterStyle.fill).frame(width: max(0, g.size.width * fraction))
+                Capsule().fill(fill).frame(width: max(0, g.size.width * fraction))
             }
         }
         .frame(height: 5)
