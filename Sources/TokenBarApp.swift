@@ -99,8 +99,19 @@ struct MenuBarLabelContent: View {
                         Image(s.service.logoColor).resizable().scaledToFit().opacity(t(s.service))
                     }
                     .frame(width: 14, height: 14)
-                    Text(text(s)).lineLimit(1).fixedSize()
-                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    if let r = meterRate(s), let p = r.primary {
+                        if let w = r.secondary {
+                            VStack(spacing: 2) {
+                                SegmentMeter(percent: p.usedPercent, color: mono, height: 6)
+                                SegmentMeter(percent: w.usedPercent, color: mono, height: 6)
+                            }
+                        } else {
+                            SegmentMeter(percent: p.usedPercent, color: mono, height: 12)
+                        }
+                    } else {
+                        Text(text(s)).lineLimit(1).fixedSize()
+                            .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    }
                 }
             }
             if grok {   // Grok Bot: shown only while working, icon only
@@ -111,6 +122,14 @@ struct MenuBarLabelContent: View {
         .foregroundStyle(mono)
         .padding(.horizontal, 1)
         .fixedSize()
+    }
+
+    /// Percentage tier → draw meters instead of text (estimates included).
+    private func meterRate(_ s: ServiceSummary) -> RateInfo? {
+        switch mode {
+        case .mixed, .percent: return s.rate?.primary != nil ? s.rate : nil
+        case .tokens: return nil
+        }
     }
 
     private func text(_ s: ServiceSummary) -> String {
@@ -204,5 +223,22 @@ struct TokenBarApp: App {
         let img = render()
         frames[frame] = img
         return img
+    }
+}
+
+/// 5 rounded vertical segments, each = 20%; filled = ceil(percent / 20).
+struct SegmentMeter: View {
+    let percent: Double
+    let color: Color
+    let height: CGFloat
+    var filled: Int { percent <= 0 ? 0 : min(5, Int((percent / 20).rounded(.up))) }
+    var body: some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<5, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(color.opacity(i < filled ? 1 : 0.25))
+                    .frame(width: 3, height: height)
+            }
+        }
     }
 }
