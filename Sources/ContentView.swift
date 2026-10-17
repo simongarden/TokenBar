@@ -41,6 +41,8 @@ struct ContentView: View {
             case .denied?: "鑰匙圈存取被拒"
             case .httpError(let c)?: "API 錯誤 \(c)"
             case .failed?: "API 讀取失敗"
+            case .expired?: "Claude Code 憑證已過期（開啟 Claude Code 後會自動更新）"
+            case .waiting(let d)?: "API 限流中，\(d.formatted(date: .omitted, time: .shortened)) 後再試"
             }
             return s.rate == nil ? "\(st)；可在設定填入 5 小時 token 上限以估算" : st
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"

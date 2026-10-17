@@ -49,7 +49,6 @@ final class UsageStore {
         if d.bool(forKey: SettingsKey.claudeOAuth) {
             let (rate, st) = await claudeClient.fetch()
             claudeStatus = st
-            log.notice("Claude usage API status: \(String(describing: st), privacy: .public)")
             if let rate, let i = s.firstIndex(where: { $0.service == .claude }) {
                 s[i].rate = rate
                 if let r = rate.primary?.resetsAt, r > .now {
