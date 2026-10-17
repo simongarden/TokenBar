@@ -171,8 +171,7 @@ struct ServiceCard: View {
     private func windowRow(_ w: RateWindow, title: String, est: Bool) -> some View {
         HStack(spacing: 6) {
             Text(title).font(.caption2).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
-            ProgressView(value: min(w.usedPercent, 100), total: 100)
-                .tint(w.usedPercent >= 90 ? .red : w.usedPercent >= 70 ? .orange : summary.service.tint)
+            LimitBar(fraction: min(w.usedPercent, 100) / 100)
             Text((est ? "~" : "") + "\(Int(w.usedPercent.rounded()))%")
                 .font(.caption.monospacedDigit().weight(.semibold)).frame(width: 40, alignment: .trailing)
             if let r = w.resetsAt {
@@ -224,7 +223,7 @@ struct DayCellsChart: View {
         guard v > 0, m > 0 else { return 0 }
         return Swift.max(1, Swift.min(rows, Int((Double(v) / Double(m) * Double(rows)).rounded())))
     }
-    private var litColor: Color { scheme == .dark ? Color.white.opacity(0.95) : Color.black.opacity(0.85) }
+    private var litColor: Color { MeterStyle.fill }
     private var unlitColor: Color { scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.10) }
     /// Color for cell at row r (0 = top) by interpolating the stops.
     private func color(row r: Int) -> Color {
@@ -273,5 +272,26 @@ struct CardBackground: ViewModifier {
         } else {
             content.glassEffect(.regular, in: .rect(cornerRadius: 14))
         }
+    }
+}
+
+/// Shared fill so the limit bars and the 7-day cells are exactly the same gray.
+enum MeterStyle {
+    static let fill = Color(nsColor: .secondaryLabelColor)
+}
+
+/// Custom limit bar (system ProgressView ignores tint in the non-key popover and renders its own gray).
+struct LimitBar: View {
+    let fraction: Double
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.10))
+                Capsule().fill(MeterStyle.fill).frame(width: max(0, g.size.width * fraction))
+            }
+        }
+        .frame(height: 5)
+        .compositingGroup()
     }
 }
