@@ -334,7 +334,7 @@ struct OnboardingView: View {
             Text("選單列將顯示：").foregroundStyle(.secondary)
             HStack {
                 MenuBarLabelContent(summaries: (store?.summaries ?? []).filter { sel[$0.service.rawValue] == true },
-                                    mode: .mixed, grok: sel["grok"] == true, mono: .white)
+                                    mode: .mixed, grok: sel["grok"] == true, palette: .dark)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Color.black.opacity(0.75), in: .capsule)
                 Spacer()

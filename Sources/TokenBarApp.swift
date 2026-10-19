@@ -87,25 +87,32 @@ final class UsageStore {
     var todayTotal: Int { summaries.reduce(0) { $0 + $1.today.total } }
 }
 
+/// Menu bar label colors. Countdown text, meter tracks and the Grok icon use `text`; the service logo,
+/// filled meter segments and value text use `idle`, or `active` while that CLI is working.
+struct MenuBarPalette {
+    var text: Color, idle: Color, active: Color
+    static let gray = Color(white: 0.5)
+    /// Dark bar: white when idle (drawn as a template image), black while working.
+    static let dark = MenuBarPalette(text: .white, idle: .white, active: .black)
+    /// Light bar: gray when idle, black while working.
+    static let light = MenuBarPalette(text: .black, idle: gray, active: .black)
+}
+
 struct MenuBarLabelContent: View {
     let summaries: [ServiceSummary]
     let mode: LabelMode
     var active: Set<Service> = []
     var grok = false
-    var mono: Color = .black
-    private func t(_ s: Service) -> Double {
-        active.contains(s) ? 1 : 0   // active: full-color logo, idle: template mono
-    }
+    var palette: MenuBarPalette = .light
+    private var mono: Color { palette.text }
+    private func ink(_ s: Service) -> Color { active.contains(s) ? palette.active : palette.idle }
     var body: some View {
         HStack(spacing: 11) {
             ForEach(summaries) { s in
                 HStack(spacing: 2) {
-                    ZStack {
-                        Image(s.service.logoMono).renderingMode(.template).resizable().scaledToFit()
-                            .foregroundStyle(mono).opacity(1 - t(s.service))
-                        Image(s.service.logoColor).resizable().scaledToFit().opacity(t(s.service))
-                    }
-                    .frame(width: 14, height: 14)
+                    Image(s.service.logoMono).renderingMode(.template).resizable().scaledToFit()
+                        .foregroundStyle(ink(s.service))
+                        .frame(width: 14, height: 14)
                     if let r = meterRate(s), let p = r.primary {
                         if let w = r.secondary {
                             VStack(alignment: .leading, spacing: 2) {
@@ -118,7 +125,7 @@ struct MenuBarLabelContent: View {
                     } else {
                         Text(text(s)).lineLimit(1).fixedSize()
                             .font(.system(size: 12, weight: .medium).monospacedDigit())
-                            .foregroundStyle(textStyle(s.service))
+                            .foregroundStyle(ink(s.service))
                     }
                 }
             }
@@ -134,26 +141,15 @@ struct MenuBarLabelContent: View {
 
     private func meterRow(_ w: RateWindow, height: CGFloat, text: String?, size: CGFloat, svc: Service) -> some View {
         HStack(spacing: 3) {
-            SegmentMeter(percent: w.usedPercent, color: mono, height: height, fills: fills(svc))
+            SegmentMeter(percent: w.usedPercent, color: mono, height: height, fill: ink(svc),
+                         // gray fill: fainter track so filled segments still stand out
+                         trackOpacity: ink(svc) == MenuBarPalette.gray ? 0.1 : 0.25)
             if let text {
                 Text(text).font(.system(size: size, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(textStyle(svc)).lineLimit(1).fixedSize()
+                    .foregroundStyle(mono).lineLimit(1).fixedSize()   // countdown: same color idle or active
                     .frame(height: height, alignment: .center)
             }
         }
-    }
-
-    /// Brand colors for filled segments while active (nil = monochrome).
-    private func fills(_ svc: Service) -> [Color]? {
-        active.contains(svc) ? svc.segmentColors : nil
-    }
-
-    private func textStyle(_ svc: Service) -> AnyShapeStyle {
-        guard active.contains(svc) else { return AnyShapeStyle(mono) }
-        let c = svc.segmentColors
-        return c.count > 1 && c.first != c.last
-            ? AnyShapeStyle(LinearGradient(colors: c, startPoint: .leading, endPoint: .trailing))
-            : AnyShapeStyle(c[0])
     }
 
     /// Percentage tier → draw meters instead of text (estimates included).
@@ -203,6 +199,21 @@ struct TokenBarApp: App {
                     view = AnyView(OnboardingView(initialStep: n) {}.environment(store).frame(width: 520, height: 440))
                 } else if name == "settings" {
                     view = AnyView(SettingsView().frame(width: 520, height: 440))
+                } else if name == "menubar" {
+                    // Menu bar label: dark / light bar × idle / all services active.
+                    let all = Set(Service.allCases)
+                    let rows: [(String, Color, MenuBarPalette, Set<Service>)] = [
+                        ("dark idle", Color(white: 0.16), .dark, []), ("dark active", Color(white: 0.16), .dark, all),
+                        ("light idle", Color(white: 0.92), .light, []), ("light active", Color(white: 0.92), .light, all)]
+                    view = AnyView(VStack(alignment: .leading, spacing: 6) {
+                        ForEach(rows, id: \.0) { r in
+                            HStack {
+                                Text(r.0).font(.caption.monospaced()).foregroundStyle(.gray).frame(width: 90, alignment: .leading)
+                                MenuBarLabelContent(summaries: store.summaries, mode: .mixed, active: r.3, grok: true, palette: r.2)
+                                    .padding(.horizontal, 8).padding(.vertical, 4).background(r.1)
+                            }
+                        }
+                    }.padding(10))
                 } else {
                     view = AnyView(ContentView(store: store))
                 }
@@ -305,10 +316,12 @@ struct TokenBarApp: App {
         let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)|g\(store.grokActive)"
         let img = LabelCache.shared.image(base: base, frame: 0) {
             let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active, grok: store.grokActive,
-                                                               mono: active.isEmpty ? .black : (dark ? .white : .black)))
+                                                               palette: dark ? .dark : .light))
             r.scale = NSScreen.main?.backingScaleFactor ?? 2
             let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
-            img.isTemplate = active.isEmpty   // color frames can't be template; idle stays template
+            // Only the dark idle frame is single-color (white) and can be a template; the light idle frame
+            // is gray + black and every active frame is two-tone, so they carry explicit colors.
+            img.isTemplate = active.isEmpty && dark
             return img
         }
         if item.button?.image !== img { item.button?.image = img }
@@ -334,28 +347,17 @@ struct SegmentMeter: View {
     let percent: Double
     let color: Color
     let height: CGFloat
-    var fills: [Color]? = nil
+    /// Filled segments; unfilled ones are `color` at `trackOpacity`.
+    var fill: Color? = nil
+    var trackOpacity: Double = 0.25
     var filled: Int { percent <= 0 ? 0 : min(5, Int((percent / 20).rounded(.up))) }
     var body: some View {
         HStack(spacing: 1.5) {
             ForEach(0..<5, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(i < filled ? (fills?[i] ?? color) : color.opacity(0.25))
+                    .fill(i < filled ? (fill ?? color) : color.opacity(trackOpacity))
                     .frame(width: 3, height: height)
             }
-        }
-    }
-}
-
-extension Service {
-    /// Per-segment brand colors (left → right).
-    var segmentColors: [Color] {
-        func hex(_ v: UInt32) -> Color {
-            Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
-        }
-        switch self {
-        case .claude: return Array(repeating: hex(0xD97757), count: 5)   // claude-color.svg
-        case .codex: return [0xB1A7FF, 0x96A2FF, 0x7A9DFF, 0x5A6FFF, 0x3941FF].map(hex)   // Codex gradient
         }
     }
 }
