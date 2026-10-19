@@ -114,6 +114,7 @@ enum SettingsKey {
     static let labelMode = "menuBarLabelMode"
     static let claudeOAuth = "claudeUseOAuth"
     static let claude5hLimit = "claude5hTokenLimit"
+    static let claudeCLIRefresh = "claudeCLIRefreshOnExpiry"
 }
 
 func percentText(_ r: RateInfo?) -> String {

@@ -123,6 +123,70 @@ private func freshDefaults() -> String {
         #expect(await c.fetch(now: t0).1 == .expired)
         #expect(api.count == 0)
     }
+
+    // MARK: expired credential → claude doctor
+
+    /// Keychain reader whose token is expired until the fake CLI "refreshes" it.
+    private final class FakeCredential: Sendable {
+        let fresh = Mutex(false)
+        let reads = Mutex(0)
+        let refreshes = Mutex(0)
+        let fixes: Bool
+        let t0: Date
+        init(fixes: Bool, t0: Date) { self.fixes = fixes; self.t0 = t0 }
+        var reader: ClaudeUsageClient.TokenReader {
+            { self.reads.withLock { $0 += 1 }
+              return .success(self.fresh.withLock { $0 } ? ("new", self.t0.addingTimeInterval(8 * 3600)) : ("old", Date(timeIntervalSince1970: 1))) }
+        }
+        var refresher: ClaudeUsageClient.CredentialRefresher {
+            { self.refreshes.withLock { $0 += 1 }
+              if self.fixes { self.fresh.withLock { $0 = true } }
+              return true }
+        }
+        var refreshCount: Int { refreshes.withLock { $0 } }
+    }
+
+    @Test func expiredTokenIsRefreshedByCLIThenUsed() async {
+        let cred = FakeCredential(fixes: true, t0: t0)
+        let api = FakeAPI(code: 200, body: okBody)
+        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: cred.reader, transport: api.transport,
+                                  refreshCredential: cred.refresher)
+        let (r, s) = await c.fetch(now: t0)
+        #expect(s == .ok && r?.primary?.usedPercent == 42)
+        #expect(cred.refreshCount == 1)
+        #expect(api.count == 1)
+    }
+
+    /// A refresh that does not help is not repeated on every poll: at most once per 30 min, across relaunches.
+    @Test func failedCLIRefreshIsRateLimited() async {
+        let suite = freshDefaults()
+        let cred = FakeCredential(fixes: false, t0: t0)
+        let api = FakeAPI(code: 200, body: okBody)
+        let c = ClaudeUsageClient(defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
+                                  refreshCredential: cred.refresher)
+        #expect(await c.fetch(now: t0).1 == .expired)
+        #expect(await c.fetch(now: t0.addingTimeInterval(6 * 60)).1 == .expired)   // past the 5 min API throttle
+        #expect(cred.refreshCount == 1)
+
+        let relaunched = ClaudeUsageClient(defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
+                                           refreshCredential: cred.refresher)
+        #expect(await relaunched.fetch(now: t0.addingTimeInterval(12 * 60)).1 == .expired)
+        #expect(cred.refreshCount == 1)
+
+        #expect(await relaunched.fetch(now: t0.addingTimeInterval(31 * 60)).1 == .expired)
+        #expect(cred.refreshCount == 2)
+        #expect(api.count == 0)
+    }
+
+    /// Setting off / CLI missing: the refresher reports it did not run and the Keychain is not re-read for it.
+    @Test func refresherThatDoesNotRunLeavesExpired() async {
+        let cred = FakeCredential(fixes: false, t0: t0)
+        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: cred.reader,
+                                  transport: FakeAPI(code: 200, body: okBody).transport,
+                                  refreshCredential: { false })
+        #expect(await c.fetch(now: t0).1 == .expired)
+        #expect(cred.reads.withLock { $0 } == 1)
+    }
 }
 
 @Suite struct ClaudeKeychainTests {

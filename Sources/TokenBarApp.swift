@@ -13,7 +13,7 @@ final class UsageStore {
     var isRefreshing = false
     var claudeStatus: ClaudeUsageClient.Status?
     private let scanner = UsageScanner()
-    private let claudeClient = ClaudeUsageClient()
+    private let claudeClient = ClaudeUsageClient(refreshCredential: ClaudeCLI.refreshIfEnabled)
     @ObservationIgnored private var loop: Task<Void, Never>?
     var active: Set<Service> = []
     var grokActive = false
@@ -369,4 +369,19 @@ func countdown(_ date: Date?, weekly: Bool, now: Date = Date()) -> String? {
         return h >= 24 ? "\(h / 24)d\(h % 24)h" : "\(h)h"
     }
     return mins >= 60 ? "\(mins / 60)h\(mins % 60)m" : "\(mins)m"
+}
+
+extension ClaudeCLI {
+    /// Expired Claude credential: let Claude Code refresh it with `claude doctor` (setting on, CLI found).
+    /// True if the CLI ran; the client re-reads the Keychain to see whether it helped.
+    @Sendable static func refreshIfEnabled() async -> Bool {
+        guard Prefs.claudeCLIRefresh else { return false }
+        guard let cli = ClaudeCLI.locate() else {
+            log.notice("claude doctor refresh: CLI not found")
+            return false
+        }
+        let code = await cli.runDoctor()
+        log.notice("claude doctor refresh: \(cli.executable.path, privacy: .public) exit \(code.map(String.init) ?? "none", privacy: .public)")
+        return true
+    }
 }

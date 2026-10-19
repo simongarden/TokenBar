@@ -59,6 +59,8 @@ enum ClaudeKeychain {
 /// the same endpoint `/usage` uses. Token stays in memory only; never logged.
 /// Throttling: success → next call ≥ 5 min; 429 → Retry-After or 10→20→40→60 min backoff,
 /// persisted in UserDefaults so relaunching does not reset it.
+/// Expired credential: asks `refreshCredential` (runs `claude doctor`) at most once per 30 min,
+/// then re-reads the Keychain; TokenBar never writes the credential itself.
 actor ClaudeUsageClient {
     enum Status: Error, Sendable, Equatable {
         case ok, noCredential, denied, expired, httpError(Int), failed
@@ -67,15 +69,21 @@ actor ClaudeUsageClient {
 
     typealias TokenReader = @Sendable () -> Result<(String, Date?), Status>
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    /// Lets Claude Code refresh its own expired credential; returns false if it did not run
+    /// (turned off, CLI not found). Success is judged by re-reading the Keychain afterwards.
+    typealias CredentialRefresher = @Sendable () async -> Bool
 
     static let nextKey = "claudeAPINextAllowed"
     static let backoffKey = "claudeAPIBackoffMinutes"
     static let savedKey = "claudeAPILastResult"
+    static let cliRefreshKey = "claudeCLIRefreshLastAttempt"
     private let successInterval: TimeInterval = 5 * 60
+    static let cliRefreshInterval: TimeInterval = 30 * 60
 
     private let defaults: UserDefaults
     private let readToken: TokenReader
     private let transport: Transport
+    private let refreshCredential: CredentialRefresher?
 
     private var token: String?
     private var expiresAt: Date?
@@ -87,15 +95,22 @@ actor ClaudeUsageClient {
     /// `defaultsSuite` nil = standard defaults (tests pass a throwaway suite).
     init(defaultsSuite: String? = nil,
          readToken: @escaping TokenReader = { ClaudeKeychain.readToken() },
-         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }) {
+         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+         refreshCredential: CredentialRefresher? = nil) {
         self.defaults = defaultsSuite.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.readToken = readToken
         self.transport = transport
+        self.refreshCredential = refreshCredential
     }
 
     private var nextAllowed: Date {
         get { defaults.object(forKey: Self.nextKey) as? Date ?? .distantPast }
         set { defaults.set(newValue, forKey: Self.nextKey) }
+    }
+    /// Persisted so relaunching does not re-run the CLI immediately.
+    private var lastCLIRefresh: Date {
+        get { defaults.object(forKey: Self.cliRefreshKey) as? Date ?? .distantPast }
+        set { defaults.set(newValue, forKey: Self.cliRefreshKey) }
     }
     private var backoffMinutes: Double {
         get { defaults.double(forKey: Self.backoffKey) }
@@ -152,10 +167,14 @@ actor ClaudeUsageClient {
             }
         }
         if let e = expiresAt, e < now {
-            // Claude Code refreshes the token when it runs; don't call with an expired token.
+            // Never call with an expired token; let Claude Code refresh it, then re-read.
             token = nil
-            clog.notice("token expired at \(e.formatted(), privacy: .public); skipping call")
-            return fail(.expired, now: now)
+            guard await refreshViaCLI(now: now), case .success(let t) = readToken(), t.1.map({ $0 > now }) ?? true else {
+                clog.notice("token expired at \(e.formatted(), privacy: .public); skipping call")
+                return fail(.expired, now: now)
+            }
+            clog.notice("token refreshed by Claude Code CLI")
+            token = t.0; expiresAt = t.1
         }
         guard let token else { return fail(.failed, now: now) }
 
@@ -206,6 +225,13 @@ actor ClaudeUsageClient {
         } catch {
             return fail(.failed, now: now)
         }
+    }
+
+    /// Runs the refresher unless it ran within `cliRefreshInterval`; true if it ran.
+    private func refreshViaCLI(now: Date) async -> Bool {
+        guard let refreshCredential, now.timeIntervalSince(lastCLIRefresh) >= Self.cliRefreshInterval else { return false }
+        lastCLIRefresh = now   // before awaiting: a failed or slow run must not repeat on the next poll
+        return await refreshCredential()
     }
 
     /// Error: clear the shown result and retry after the normal interval.

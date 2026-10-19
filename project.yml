@@ -59,6 +59,7 @@ targets:
       - Sources/Models.swift
       - Sources/ClaudeUsageClient.swift
       - Sources/RecentFileWatcher.swift
+      - Sources/ClaudeCLI.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.okmaster.TokenBarTests

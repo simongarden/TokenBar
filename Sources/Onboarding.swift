@@ -18,6 +18,11 @@ enum Prefs {
         get { UserDefaults.standard.object(forKey: SettingsKey.claudeOAuth) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: SettingsKey.claudeOAuth) }
     }
+    /// Run `claude doctor` when the Claude credential has expired (default on).
+    static var claudeCLIRefresh: Bool {
+        get { UserDefaults.standard.object(forKey: SettingsKey.claudeCLIRefresh) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.claudeCLIRefresh) }
+    }
 
     /// Existing installs (have prior TokenBar data) skip onboarding with everything enabled.
     static func migrateIfNeeded() {
@@ -380,6 +385,7 @@ struct OnboardingView: View {
 struct SettingsView: View {
     @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: ["claude", "codex", "grok"].map { ($0, Prefs.isEnabled($0)) })
     @State private var claudeAPI = Prefs.claudeAPI
+    @State private var cliRefresh = Prefs.claudeCLIRefresh
     @State private var authorizing = false
     @State private var authNote: String?
     @State private var autoUpdate = Updater.shared.automaticallyChecks
@@ -422,6 +428,12 @@ struct SettingsView: View {
             if let n = authNote {
                 Text(n).font(.caption).foregroundStyle(.orange)
             }
+            Toggle("憑證過期時自動執行 claude doctor 更新", isOn: $cliRefresh)
+                .toggleStyle(.switch).disabled(!claudeAPI)
+                .onChange(of: cliRefresh) { _, v in
+                    Prefs.claudeCLIRefresh = v
+                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                }
             Toggle("自動檢查更新", isOn: $autoUpdate)
                 .toggleStyle(.switch)
                 .onChange(of: autoUpdate) { _, v in Updater.shared.automaticallyChecks = v }
