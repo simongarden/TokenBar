@@ -38,7 +38,7 @@ struct ContentView: View {
             case .denied?: "尚未授權讀取鑰匙圈（請到設定重新開啟官方用量 API）"
             case .httpError(let c)?: "API 錯誤 \(c)"
             case .failed?: "API 讀取失敗"
-            case .expired?: "Claude Code 憑證已過期（開啟 Claude Code 後會自動更新）"
+            case .expired?: "Claude Code 登入憑證已過期：請在終端機執行一次 claude CLI 以更新（Claude 桌面版不會更新此憑證）"
             case .waiting(let d)?: "API 限流中，\(d.formatted(date: .omitted, time: .shortened)) 後再試"
             }
             return s.rate == nil ? "\(st)" : st
