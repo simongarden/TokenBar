@@ -382,7 +382,12 @@ struct SettingsView: View {
     @State private var claudeAPI = Prefs.claudeAPI
     @State private var authorizing = false
     @State private var authNote: String?
+    @State private var autoUpdate = Updater.shared.automaticallyChecks
     private let providers = ProviderDetector.detect()
+    private static let version: String = {
+        let i = Bundle.main.infoDictionary
+        return "\(i?["CFBundleShortVersionString"] as? String ?? "?") (\(i?["CFBundleVersion"] as? String ?? "?"))"
+    }()
 
     private func apply(_ on: Bool) {
         Prefs.claudeAPI = on
@@ -417,9 +422,17 @@ struct SettingsView: View {
             if let n = authNote {
                 Text(n).font(.caption).foregroundStyle(.orange)
             }
+            Toggle("自動檢查更新", isOn: $autoUpdate)
+                .toggleStyle(.switch)
+                .onChange(of: autoUpdate) { _, v in Updater.shared.automaticallyChecks = v }
             Spacer()
             HStack {
+                Text("版本 \(Self.version)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Button { Updater.shared.checkForUpdates() } label: {
+                    Label("檢查更新…", systemImage: "arrow.down.circle")
+                }
+                .modifier(GlassButton()).controlSize(.large)
                 Button { WindowManager.shared.showOnboarding() } label: {
                     Label("重新執行安裝引導", systemImage: "arrow.counterclockwise")
                 }

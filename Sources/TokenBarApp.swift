@@ -218,6 +218,7 @@ struct TokenBarApp: App {
             return
         }
         Prefs.migrateIfNeeded()
+        Updater.shared.start()
         let store = UsageStore()
         WindowManager.shared.store = store
         controller = StatusController(store: store)

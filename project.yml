@@ -3,6 +3,10 @@ options:
   bundleIdPrefix: com.okmaster
   deploymentTarget:
     macOS: "26.0"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.10.0"
 configFiles:
   Debug: Config/Signing.xcconfig
   Release: Config/Signing.xcconfig
@@ -23,6 +27,8 @@ targets:
     type: application
     platform: macOS
     sources: [Sources]
+    dependencies:
+      - package: Sparkle
     info:
       path: Sources/Info.plist
       properties:
@@ -32,6 +38,11 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: "© 2026 Simon Wang"
+        # Sparkle: appcast.xml is attached to every GitHub Release; "latest" always points at the newest one.
+        SUFeedURL: https://github.com/simongarden/TokenBar/releases/latest/download/appcast.xml
+        SUPublicEDKey: 5beeNKkNlYN1xr0eE8ij4dvDwdzaQoO+Sk8puvg+gxc=
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.okmaster.TokenBar

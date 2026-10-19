@@ -5,12 +5,19 @@
 #
 # xcodegen consistency check → tests → Release build → Developer ID signing (hardened runtime,
 # secure timestamp) → AITokenStatus-<version>-<build>-<arch>.dmg (signed) → notarytool → staple →
-# Gatekeeper check → local archive copy → GitHub Release v<version>-<build> in simongarden/TokenBar.
+# Gatekeeper check → Sparkle EdDSA signature + appcast.xml → local archive copy →
+# GitHub Release v<version>-<build> in simongarden/TokenBar (dmg, appcast.xml, notes, SHA256SUMS).
+#
+# Sparkle auto-update: the app's SUFeedURL is releases/latest/download/appcast.xml, so every release
+# attaches its own appcast.xml (one item: this version). The EdDSA private key lives in the login
+# Keychain (generate_keys --account $TOKENBAR_SPARKLE_ACCOUNT, default TokenBar); its public key is
+# SUPublicEDKey in project.yml. The dmg is signed after stapling (stapling changes its bytes).
 #
 # Machine-specific values come from Scripts/release.local (gitignored, sourced) or the environment:
 #   TOKENBAR_TEAM_ID              Developer ID team
 #   TOKENBAR_NOTARY_PROFILE       notarytool keychain profile
 #   TOKENBAR_RELEASE_ARCHIVE_DIR  local release archive folder
+#   TOKENBAR_SPARKLE_ACCOUNT      Keychain account of the Sparkle EdDSA key (default TokenBar)
 #
 # The version is MARKETING_VERSION / CURRENT_PROJECT_VERSION in project.yml (committed). A real
 # release refuses a dirty working tree, an unpushed HEAD, failing tests, a pbxproj out of sync
@@ -30,6 +37,7 @@ repo_slug=simongarden/TokenBar
 [[ -f Scripts/release.local ]] && source Scripts/release.local
 team=${TOKENBAR_TEAM_ID:-} notary_profile=${TOKENBAR_NOTARY_PROFILE:-}
 archive_root=${TOKENBAR_RELEASE_ARCHIVE_DIR:-}
+sparkle_account=${TOKENBAR_SPARKLE_ACCOUNT:-TokenBar}
 release_day=$(TZ=Asia/Taipei date +%Y%m%d)
 
 dry=0 notes='' notes_file=''
@@ -95,18 +103,30 @@ say "build $version ($build)"
 xcodebuild -project TokenBar.xcodeproj -scheme TokenBar -configuration Release -derivedDataPath build/DD \
   DEVELOPMENT_TEAM="$team" clean build > "$out/build.log" 2>&1 || die "build 失敗（見 $out/build.log）"
 app="$out/TokenBar.app"; ditto build/DD/Build/Products/Release/TokenBar.app "$app"
+sparkle_bin=build/DD/SourcePackages/artifacts/sparkle/Sparkle/bin
+[[ -x $sparkle_bin/sign_update && -x $sparkle_bin/generate_keys ]] || die "找不到 Sparkle 工具（$sparkle_bin）"
 plist() { /usr/libexec/PlistBuddy -c "Print $1" "$app/Contents/Info.plist"; }
 [[ $(plist CFBundleShortVersionString) == $version && $(plist CFBundleVersion) == $build ]] || die "App 版本不符"
 identity=$(security find-identity -v -p codesigning | sed -nE "s/.*\"(Developer ID Application: .*\($team\))\"/\1/p" | head -1)
 [[ -n $identity ]] || die "鑰匙圈中找不到 Developer ID Application 憑證（team ${team}）"
 
-say "sign app"
+say "sign app (Sparkle helpers first, inside out)"
+sparkle_fw="$app/Contents/Frameworks/Sparkle.framework"
+[[ -d $sparkle_fw ]] || die "App 內沒有 Sparkle.framework"
+fwv="$sparkle_fw/Versions/B"
+for x in "$fwv/XPCServices/Installer.xpc" "$fwv/Autoupdate" "$fwv/Updater.app"; do
+  [[ -e $x ]] && codesign --force --options runtime --timestamp --sign "$identity" "$x"
+done
+[[ -e "$fwv/XPCServices/Downloader.xpc" ]] && codesign --force --options runtime --timestamp --preserve-metadata=entitlements --sign "$identity" "$fwv/XPCServices/Downloader.xpc"
+codesign --force --options runtime --timestamp --sign "$identity" "$sparkle_fw"
 codesign --force --options runtime --timestamp --sign "$identity" "$app"
 codesign --verify --deep --strict -v "$app"
 info=$(codesign -dvv "$app" 2>&1)
 [[ $info == *"TeamIdentifier=$team"* && $info == *"flags=0x10000(runtime)"* && $info == *"Timestamp="* ]] || die "簽章缺少 team/runtime/timestamp"
 ents=$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)
 [[ $ents != *get-task-allow* ]] || die "含 get-task-allow"
+[[ $(plist SUPublicEDKey) == $("$sparkle_bin/generate_keys" --account "$sparkle_account" -p 2>/dev/null) ]] || die "SUPublicEDKey 與鑰匙圈中的 Sparkle 金鑰（$sparkle_account）不符"
+[[ $(plist SUFeedURL) == "https://github.com/$repo_slug/releases/latest/download/appcast.xml" ]] || die "SUFeedURL 不正確：$(plist SUFeedURL)"
 [[ $(TOKENBAR_KEYCHAIN_PROBE=1 "$app/Contents/MacOS/TokenBar") == *"exists(attrs)=0"* ]] || die "鑰匙圈探測失敗"
 arch=$(lipo -archs "$app/Contents/MacOS/TokenBar" | tr ' ' '-')
 
@@ -141,6 +161,41 @@ grep -q "Notarized Developer ID" "$out/spctl-app.log" || die "Gatekeeper 未認�
 dmg_sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
 say "dmg $(stat -f %z "$dmg") bytes  sha256 $dmg_sha  notary $nid Accepted"
 
+# 2b. Sparkle: EdDSA-sign the final (stapled) dmg, write this release's appcast.xml, sign the feed.
+ed_sig=$("$sparkle_bin/sign_update" --account "$sparkle_account" -p "$dmg") || die "Sparkle 簽署失敗（鑰匙圈帳號 $sparkle_account）"
+"$sparkle_bin/sign_update" --account "$sparkle_account" --verify "$dmg" "$ed_sig" >/dev/null || die "Sparkle 簽章驗證失敗"
+appcast="$out/appcast.xml"
+NOTES=$notes python3 - "$appcast" "$version" "$build" "$(plist LSMinimumSystemVersion)" \
+  "https://github.com/$repo_slug/releases/download/$tag/${dmg:t}" "$(stat -f %z "$dmg")" "$ed_sig" "https://github.com/$repo_slug/releases/tag/$tag" <<'PY'
+import html, os, sys
+from email.utils import formatdate
+out, version, build, minos, url, length, sig, page = sys.argv[1:]
+notes = "<br>\n".join(html.escape(l) for l in os.environ["NOTES"].splitlines())
+x = html.escape
+open(out, "w").write(f"""<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>AI Token Status</title>
+    <link>{x(page)}</link>
+    <item>
+      <title>AI Token Status {x(version)} ({x(build)})</title>
+      <pubDate>{formatdate(usegmt=True)}</pubDate>
+      <sparkle:version>{x(build)}</sparkle:version>
+      <sparkle:shortVersionString>{x(version)}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>{x(minos)}</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>{x(page)}</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[{notes}]]></description>
+      <enclosure url="{x(url)}" length="{x(length)}" type="application/octet-stream" sparkle:edSignature="{x(sig)}"/>
+    </item>
+  </channel>
+</rss>
+""")
+PY
+"$sparkle_bin/sign_update" --account "$sparkle_account" "$appcast" >/dev/null || die "appcast 簽署失敗"
+"$sparkle_bin/sign_update" --account "$sparkle_account" --verify "$appcast" >/dev/null || die "appcast 簽章驗證失敗"
+xmllint --noout "$appcast" || die "appcast.xml 格式錯誤"
+say "Sparkle: dmg + appcast.xml signed (account $sparkle_account)"
+
 # 3. Local installable copy + checksums + notes (never overwrite).
 print -r -- "$notes" > "$out/$notes_name"
 ( cd "$out" && shasum -a 256 "${dmg:t}" "$notes_name" ) > "$out/$sums_name"
@@ -157,6 +212,7 @@ dmg sha256 $dmg_sha
 notary     $nid Accepted
 local copy $archive_dest$( (( dry )) && print -n "  (dry-run stand-in)")
 release    https://github.com/$repo_slug/releases/tag/$tag
+appcast    $out/appcast.xml (Sparkle EdDSA $ed_sig)
 SUM
 if (( dry )); then
   say "dry run complete — no GitHub Release created. Outputs: $out"
@@ -167,14 +223,16 @@ mkdir -p ~/Downloads/grok; cp -f "$dmg" ~/Downloads/grok/
 
 # 4. GitHub Release: dmg, ASCII-named notes, SHA256SUMS covering both.
 assets="$out/github-assets"; rm -rf "$assets"; mkdir -p "$assets"
-cp "$dmg" "$assets/"; print -r -- "$notes" > "$assets/$gh_notes_name"
+cp "$dmg" "$appcast" "$assets/"; print -r -- "$notes" > "$assets/$gh_notes_name"
 ( cd "$assets" && shasum -a 256 "${dmg:t}" "$gh_notes_name" ) > "$out/$sums_name.github"
 mv "$out/$sums_name.github" "$assets/$sums_name"
 say "creating GitHub Release $tag in $repo_slug"
 print -r -- "$notes" > "$out/notes.txt"
-gh release create "$tag" "$assets/${dmg:t}" "$assets/$gh_notes_name" "$assets/$sums_name" \
+gh release create "$tag" "$assets/${dmg:t}" "$assets/appcast.xml" "$assets/$gh_notes_name" "$assets/$sums_name" \
   --repo $repo_slug --target "$commit" --title "AI Token Status $version ($build)" --notes-file "$out/notes.txt"
 url="https://github.com/$repo_slug/releases/download/$tag/${dmg:t}"
 code=$(curl -sL -o /dev/null -w '%{http_code}' "$url"); [[ $code == 200 ]] || die "Release 檔案無法下載（HTTP $code）：$url"
+feed="https://github.com/$repo_slug/releases/latest/download/appcast.xml"
+curl -sfL "$feed" | grep -q "<sparkle:version>$build</sparkle:version>" || die "Sparkle feed 尚未指向本版（$feed）"
 cat "$out/SUMMARY.txt"
 say "published: https://github.com/$repo_slug/releases/tag/$tag"
