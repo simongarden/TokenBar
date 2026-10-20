@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "531D59D64152CE6396100035"
-               BuildableName = "TokenBar.app"
-               BlueprintName = "TokenBar"
-               ReferencedContainer = "container:TokenBar.xcodeproj">
+               BlueprintIdentifier = "A1AE3434D8F31E218009142B"
+               BuildableName = "OKM-Skirr.app"
+               BlueprintName = "OKM Skirr"
+               ReferencedContainer = "container:OKM Skirr.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -32,10 +32,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "531D59D64152CE6396100035"
-            BuildableName = "TokenBar.app"
-            BlueprintName = "TokenBar"
-            ReferencedContainer = "container:TokenBar.xcodeproj">
+            BlueprintIdentifier = "A1AE3434D8F31E218009142B"
+            BuildableName = "OKM-Skirr.app"
+            BlueprintName = "OKM Skirr"
+            ReferencedContainer = "container:OKM Skirr.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -44,10 +44,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0BF80752B81B2840A0FF8933"
-               BuildableName = "TokenBarTests.xctest"
-               BlueprintName = "TokenBarTests"
-               ReferencedContainer = "container:TokenBar.xcodeproj">
+               BlueprintIdentifier = "B937543A904D71A4B40C38A8"
+               BuildableName = "OKMSkirrTests.xctest"
+               BlueprintName = "OKMSkirrTests"
+               ReferencedContainer = "container:OKM Skirr.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -68,10 +68,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "531D59D64152CE6396100035"
-            BuildableName = "TokenBar.app"
-            BlueprintName = "TokenBar"
-            ReferencedContainer = "container:TokenBar.xcodeproj">
+            BlueprintIdentifier = "A1AE3434D8F31E218009142B"
+            BuildableName = "OKM-Skirr.app"
+            BlueprintName = "OKM Skirr"
+            ReferencedContainer = "container:OKM Skirr.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -87,10 +87,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "531D59D64152CE6396100035"
-            BuildableName = "TokenBar.app"
-            BlueprintName = "TokenBar"
-            ReferencedContainer = "container:TokenBar.xcodeproj">
+            BlueprintIdentifier = "A1AE3434D8F31E218009142B"
+            BuildableName = "OKM-Skirr.app"
+            BlueprintName = "OKM Skirr"
+            ReferencedContainer = "container:OKM Skirr.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>

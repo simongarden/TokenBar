@@ -26,6 +26,7 @@ struct ContentView: View {
         }
         .padding(12)
         .frame(width: 380)
+        .modifier(SKIRRTheme())
     }
 
     private func rateNote(for s: ServiceSummary) -> String {
@@ -49,10 +50,10 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack {
-            Label("AI Token Status", systemImage: "chart.bar.xaxis")
-                .font(.headline)
-            Spacer()
+        HStack(spacing: 10) {
+            Image("SKIRRMark").resizable().scaledToFit().frame(width: 28, height: 28).accessibilityHidden(true)
+            Text("OKM SKÍRR").font(.headline).fixedSize()
+            Spacer(minLength: 0)
             if let t = store.lastUpdated {
                 Text("更新於 \(t.formatted(date: .omitted, time: .standard))")
                     .font(.caption).foregroundStyle(.secondary)

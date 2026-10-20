@@ -1,10 +1,10 @@
 #!/bin/zsh
-# Builds, notarizes and publishes an AI Token Status (TokenBar) release.
+# Builds, notarizes and publishes an OKM Skirr release.
 #
 #   Scripts/release.sh [--notes TEXT | --notes-file F] [--dry-run]
 #
 # xcodegen consistency check → tests → Release build → Developer ID signing (hardened runtime,
-# secure timestamp) → AITokenStatus-<version>-<build>-<arch>.dmg (signed) → notarytool → staple →
+# secure timestamp) → OKM-Skirr-<version>-<build>-<arch>.dmg (signed) → notarytool → staple →
 # Gatekeeper check → Sparkle EdDSA signature + appcast.xml → local archive copy →
 # GitHub Release v<version>-<build> in simongarden/TokenBar (dmg, appcast.xml, notes, SHA256SUMS).
 #
@@ -25,9 +25,9 @@
 # Every file name inside the dmg must be ASCII (otherwise the code seal can break when copied).
 #
 # 發行規則（每次正式發行）：除了建立 GitHub Release 之外，另存一份可安裝的檔案到本機——已公證並
-# staple 的磁碟映像 AITokenStatus-<version>-<build>-<arch>.dmg（Developer ID 簽署），放在
+# staple 的磁碟映像 OKM-Skirr-<version>-<build>-<arch>.dmg（Developer ID 簽署），放在
 # $TOKENBAR_RELEASE_ARCHIVE_DIR/<YYYYMMDD>/（YYYYMMDD 為台北時間的發行日期；資料夾不存在就建立），
-# 旁邊附 AITokenStatus-<version>-<build>-SHA256SUMS.txt 與 AITokenStatus-<version>-<build>-發行說明.txt。
+# 旁邊附 OKM-Skirr-<version>-<build>-SHA256SUMS.txt 與 OKM-Skirr-<version>-<build>-發行說明.txt。
 # 絕不覆寫既有檔案（已存在就在建置前停止）。--dry-run 會在本機完成全部步驟（含 Apple 公證），
 # 但改寫到 build/release/<version>-<build>/版本發行-dry-run/<YYYYMMDD>/，不建立 GitHub Release。
 set -euo pipefail
@@ -59,11 +59,11 @@ version=$(sed -nE 's/^ *MARKETING_VERSION: "([^"]+)"/\1/p' project.yml)
 build=$(sed -nE 's/^ *CURRENT_PROJECT_VERSION: "([^"]+)"/\1/p' project.yml)
 [[ $version =~ '^[0-9]+(\.[0-9]+){1,3}$' && $build =~ '^[0-9]+$' ]] || die "project.yml 的版本或 build 格式錯誤：$version / $build"
 [[ -n $notes_file ]] && notes=$(<"$notes_file")
-[[ -n $notes ]] || notes="AI Token Status $version ($build)"
-tag="v$version-$build" prefix="AITokenStatus-$version-$build"
+[[ -n $notes ]] || notes="OKM Skirr $version ($build)"
+tag="v$version-$build" prefix="OKM-Skirr-$version-$build"
 sums_name="$prefix-SHA256SUMS.txt" notes_name="$prefix-發行說明.txt" gh_notes_name="$prefix-release-notes.txt"
 out="$root/build/release/$version-$build"
-print -r -- "AI Token Status release $version ($build)$( (( dry )) && print -n '  [dry run: nothing is published]')"
+print -r -- "OKM Skirr release $version ($build)$( (( dry )) && print -n '  [dry run: nothing is published]')"
 
 if (( dry )); then
   archive_dest="$out/版本發行-dry-run/$release_day"
@@ -85,7 +85,7 @@ fi
 commit=$(git rev-parse HEAD)
 if command -v xcodegen >/dev/null; then
   xcodegen generate -q
-  (( dry )) || git diff --quiet -- TokenBar.xcodeproj || die "TokenBar.xcodeproj 與 project.yml 不一致；請重新產生並提交。"
+  (( dry )) || git diff --quiet -- "OKM Skirr.xcodeproj" || die "OKM Skirr.xcodeproj 與 project.yml 不一致；請重新產生並提交。"
 fi
 if (( ! dry )); then
   git fetch -q origin
@@ -96,13 +96,13 @@ if (( ! dry )); then
 fi
 rm -rf "$out"; mkdir -p "$out"
 say "running tests"
-xcodebuild test -project TokenBar.xcodeproj -scheme TokenBar -derivedDataPath build/DD-test > "$out/tests.log" 2>&1 || die "測試失敗，拒絕發行（見 $out/tests.log）"
+xcodebuild test -project "OKM Skirr.xcodeproj" -scheme "OKM Skirr" -derivedDataPath build/DD-test > "$out/tests.log" 2>&1 || die "測試失敗，拒絕發行（見 $out/tests.log）"
 
 # 1. Build and sign.
 say "build $version ($build)"
-xcodebuild -project TokenBar.xcodeproj -scheme TokenBar -configuration Release -derivedDataPath build/DD \
+xcodebuild -project "OKM Skirr.xcodeproj" -scheme "OKM Skirr" -configuration Release -derivedDataPath build/DD \
   DEVELOPMENT_TEAM="$team" clean build > "$out/build.log" 2>&1 || die "build 失敗（見 $out/build.log）"
-app="$out/TokenBar.app"; ditto build/DD/Build/Products/Release/TokenBar.app "$app"
+app="$out/OKM-Skirr.app"; ditto build/DD/Build/Products/Release/OKM-Skirr.app "$app"
 sparkle_bin=build/DD/SourcePackages/artifacts/sparkle/Sparkle/bin
 [[ -x $sparkle_bin/sign_update && -x $sparkle_bin/generate_keys ]] || die "找不到 Sparkle 工具（$sparkle_bin）"
 plist() { /usr/libexec/PlistBuddy -c "Print $1" "$app/Contents/Info.plist"; }
@@ -127,15 +127,15 @@ ents=$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)
 [[ $ents != *get-task-allow* ]] || die "含 get-task-allow"
 [[ $(plist SUPublicEDKey) == $("$sparkle_bin/generate_keys" --account "$sparkle_account" -p 2>/dev/null) ]] || die "SUPublicEDKey 與鑰匙圈中的 Sparkle 金鑰（$sparkle_account）不符"
 [[ $(plist SUFeedURL) == "https://github.com/$repo_slug/releases/latest/download/appcast.xml" ]] || die "SUFeedURL 不正確：$(plist SUFeedURL)"
-[[ $(TOKENBAR_KEYCHAIN_PROBE=1 "$app/Contents/MacOS/TokenBar") == *"exists(attrs)=0"* ]] || die "鑰匙圈探測失敗"
-arch=$(lipo -archs "$app/Contents/MacOS/TokenBar" | tr ' ' '-')
+[[ $(TOKENBAR_KEYCHAIN_PROBE=1 "$app/Contents/MacOS/OKM-Skirr") == *"exists(attrs)=0"* ]] || die "鑰匙圈探測失敗"
+arch=$(lipo -archs "$app/Contents/MacOS/OKM-Skirr" | tr ' ' '-')
 
 # 2. Disk image: signed, notarized, stapled.
 dmg="$out/$prefix-$arch.dmg"
 say "dmg ${dmg:t}"
-root_dir="$out/dmg-root"; mkdir -p "$root_dir"; ditto "$app" "$root_dir/TokenBar.app"; ln -s /Applications "$root_dir/Applications"
+root_dir="$out/dmg-root"; mkdir -p "$root_dir"; ditto "$app" "$root_dir/OKM-Skirr.app"; ln -s /Applications "$root_dir/Applications"
 bad=$(cd "$root_dir" && find . -print | LC_ALL=C grep '[^ -~]' || true); [[ -z $bad ]] || die "非 ASCII 檔名：$bad"
-hdiutil create -volname "AI Token Status $version" -srcfolder "$root_dir" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$dmg" > "$out/hdiutil.log" 2>&1 || die "hdiutil 失敗"
+hdiutil create -volname "OKM Skirr $version" -srcfolder "$root_dir" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$dmg" > "$out/hdiutil.log" 2>&1 || die "hdiutil 失敗"
 rm -rf "$root_dir"
 codesign --sign "$identity" --timestamp -i com.okmaster.TokenBar.dmg "$dmg"
 codesign --verify --strict -v "$dmg"
@@ -155,7 +155,7 @@ spctl -a -vv -t open --context context:primary-signature "$dmg" > "$out/spctl-dm
 grep -q "Notarized Developer ID" "$out/spctl-dmg.log" || die "Gatekeeper 未認可 dmg（見 $out/spctl-dmg.log）"
 mnt=$(mktemp -d /tmp/tokenbar-dmg.XXXXXX)
 hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null
-spctl -a -vv -t execute "$mnt/TokenBar.app" > "$out/spctl-app.log" 2>&1 || true
+spctl -a -vv -t execute "$mnt/OKM-Skirr.app" > "$out/spctl-app.log" 2>&1 || true
 hdiutil detach -quiet "$mnt" || hdiutil detach -force -quiet "$mnt"; rmdir "$mnt" 2>/dev/null || true
 grep -q "Notarized Developer ID" "$out/spctl-app.log" || die "Gatekeeper 未認可 app（見 $out/spctl-app.log）"
 dmg_sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
@@ -175,10 +175,10 @@ x = html.escape
 open(out, "w").write(f"""<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>AI Token Status</title>
+    <title>OKM Skirr</title>
     <link>{x(page)}</link>
     <item>
-      <title>AI Token Status {x(version)} ({x(build)})</title>
+      <title>OKM Skirr {x(version)} ({x(build)})</title>
       <pubDate>{formatdate(usegmt=True)}</pubDate>
       <sparkle:version>{x(build)}</sparkle:version>
       <sparkle:shortVersionString>{x(version)}</sparkle:shortVersionString>
@@ -206,7 +206,7 @@ for f in "$dmg" "$out/$sums_name" "$out/$notes_name"; do
 done
 [[ $(shasum -a 256 "$archive_dest/${dmg:t}" | cut -d' ' -f1) == $dmg_sha ]] || die "複製到本機發行資料夾後檢查碼不符"
 cat > "$out/SUMMARY.txt" <<SUM
-AI Token Status $version ($build)  source commit ${commit:0:7}
+OKM Skirr $version ($build)  source commit ${commit:0:7}
 dmg        $dmg
 dmg sha256 $dmg_sha
 notary     $nid Accepted
@@ -229,7 +229,7 @@ mv "$out/$sums_name.github" "$assets/$sums_name"
 say "creating GitHub Release $tag in $repo_slug"
 print -r -- "$notes" > "$out/notes.txt"
 gh release create "$tag" "$assets/${dmg:t}" "$assets/appcast.xml" "$assets/$gh_notes_name" "$assets/$sums_name" \
-  --repo $repo_slug --target "$commit" --title "AI Token Status $version ($build)" --notes-file "$out/notes.txt"
+  --repo $repo_slug --target "$commit" --title "OKM Skirr $version ($build)" --notes-file "$out/notes.txt"
 url="https://github.com/$repo_slug/releases/download/$tag/${dmg:t}"
 code=$(curl -sL -o /dev/null -w '%{http_code}' "$url"); [[ $code == 200 ]] || die "Release 檔案無法下載（HTTP $code）：$url"
 feed="https://github.com/$repo_slug/releases/latest/download/appcast.xml"

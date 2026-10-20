@@ -80,11 +80,11 @@ struct ClaudeCLI: Sendable {
         #!/bin/zsh
         trap \(Self.shellQuote("/bin/rm -f -- " + Self.shellQuote(command.path) + "; /bin/rmdir -- " + Self.shellQuote(directory.path))) EXIT
         cd \(Self.shellQuote(directory.path)) || exit 1
-        printf '%s\\n' '請依 Claude 的畫面指示登入；完成後回到 AI Token Status 按「完成登入，重新連接」。'
+        printf '%s\\n' '請依 Claude 的畫面指示登入；完成後回到 OKM Skirr 按「完成登入，重新連接」。'
         \(invocation)
         login_result=$?
         if [[ $login_result -eq 0 ]]; then
-          printf '%s\\n' '登入完成。請回到 AI Token Status 確認連線。'
+          printf '%s\\n' '登入完成。請回到 OKM Skirr 確認連線。'
         else
           printf '%s\\n' '登入尚未完成。你可以關閉這個視窗，回到 App 再試一次。'
         fi

@@ -228,6 +228,41 @@ struct TokenBarApp: App {
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: StatusController?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["SKIRR_SETTINGS_PREVIEW"] {
+            let scheme: ColorScheme = ProcessInfo.processInfo.environment["SKIRR_PREVIEW_LIGHT"] == "1" ? .light : .dark
+            NSApp.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+            let providers = [
+                ProviderInfo(id: "claude", name: "Claude Code", logo: "LogoClaudeColor", detected: true,
+                             status: "已偵測到本機記錄", help: nil, link: nil),
+                ProviderInfo(id: "codex", name: "ChatGPT / Codex", logo: "LogoCodexColor", detected: true,
+                             status: "已偵測到本機記錄", help: nil, link: nil),
+                ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: true,
+                             status: "僅顯示背景運作狀態，無用量數字", help: nil, link: nil)
+            ]
+            let root = SettingsView(providers: providers).environment(\.colorScheme, scheme)
+                .environment(\.controlActiveState, .key)
+                .frame(width: 620, height: 1260)
+            let hosting = NSHostingView(rootView: root)
+            let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 620, height: 1260),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = hosting
+            NSApp.activate()
+            window.makeKeyAndOrderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                hosting.layoutSubtreeIfNeeded()
+                if let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+                    hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+                    if let png = bitmap.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: path))
+                    }
+                }
+                window.orderOut(nil)
+                exit(0)
+            }
+            return
+        }
+        #endif
         if ProcessInfo.processInfo.environment["TOKENBAR_KEYCHAIN_PROBE"] == "1" {
             // Debug: status codes only, no UI, no secret output.
             print("exists(attrs)=\(ProviderDetector.keychainItemExists()) read(noUI)=\(ProviderDetector.keychainStatus(allowUI: false))")
@@ -248,7 +283,7 @@ struct TokenBarApp: App {
                 if name.hasPrefix("onboard"), let n = Int(name.dropFirst(7)) {
                     view = AnyView(OnboardingView(initialStep: n) {}.environment(store).frame(width: 520, height: 440))
                 } else if name == "settings" {
-                    view = AnyView(SettingsView().frame(width: 520, height: 440))
+                    view = AnyView(SettingsView().frame(width: 620, height: 820))
                 } else if name == "menubar" {
                     // Menu bar label: dark / light bar × idle / all services active.
                     let all = Set(Service.allCases)

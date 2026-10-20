@@ -182,26 +182,31 @@ private let klog = Logger(subsystem: "com.okmaster.TokenBar", category: "keychai
             self?.onboarding?.close()
             NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
         }
-        onboarding = present(onboarding, title: "歡迎使用 AI Token Status", view: AnyView(view.environment(store)))
+        onboarding = present(onboarding, title: "歡迎使用 OKM Skirr", view: AnyView(view.environment(store)))
     }
 
     func showSettings() {
         NotificationCenter.default.post(name: .tokenBarClosePopover, object: nil)
-        settings = present(settings, title: "AI Token Status 設定", view: AnyView(SettingsView(store: store)))
-        settings?.setContentSize(NSSize(width: 520, height: 600))
+        if let settings, settings.isVisible {
+            NSApp.activate(); settings.makeKeyAndOrderFront(nil); return
+        }
+        settings = present(settings, title: "設定", view: AnyView(SettingsView(store: store)),
+                           size: NSSize(width: 620, height: 820))
+        settings?.styleMask.insert(.resizable)
+        settings?.contentMinSize = NSSize(width: 560, height: 560)
     }
 
-    private func present(_ existing: NSWindow?, title: String, view: AnyView) -> NSWindow {
+    private func present(_ existing: NSWindow?, title: String, view: AnyView, size: NSSize = NSSize(width: 520, height: 440)) -> NSWindow {
         let w = existing ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
                                      styleMask: [.titled, .closable, .fullSizeContentView],
                                      backing: .buffered, defer: false)
         w.title = title
         w.titlebarAppearsTransparent = true
-        w.titleVisibility = .hidden
+        w.titleVisibility = .visible
         w.isReleasedWhenClosed = false
         w.isMovableByWindowBackground = true
-        w.contentViewController = NSHostingController(rootView: view.frame(width: 520, height: 440))
-        w.setContentSize(NSSize(width: 520, height: 440))
+        w.contentViewController = NSHostingController(rootView: view.frame(maxWidth: .infinity, maxHeight: .infinity))
+        w.setContentSize(size)
         let mouse = NSEvent.mouseLocation   // center on the screen under the pointer
         if let scr = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main {
             let f = scr.visibleFrame
@@ -220,28 +225,25 @@ struct ProviderRow: View {
     let info: ProviderInfo
     @Binding var on: Bool
     var body: some View {
-        Button { on.toggle() } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: on ? "checkmark.square.fill" : "square")
-                    .font(.title3).foregroundStyle(on ? Color.accentColor : .secondary)
-                Image(info.logo).resizable().scaledToFit().frame(width: 22, height: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(info.name).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                    Text(info.status).font(.caption).foregroundStyle(info.detected ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                    if let h = info.help {
-                        HStack(spacing: 4) {
-                            Text(h).font(.caption2).foregroundStyle(.secondary)
-                            if let l = info.link { Link("說明", destination: l).font(.caption2) }
-                        }
+        HStack(alignment: .center, spacing: 12) {
+            Image(info.logo).resizable().scaledToFit().frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.name).font(.body.weight(.semibold))
+                Text(info.status).font(.caption).foregroundStyle(.secondary)
+                if let help = info.help {
+                    HStack(spacing: 4) {
+                        Text(help).font(.caption2).foregroundStyle(.secondary)
+                        if let link = info.link { Link("說明", destination: link).font(.caption2) }
                     }
                 }
-                Spacer()
             }
-            .padding(10)
-            .contentShape(.rect)
+            Spacer(minLength: 12)
+            Toggle(info.name, isOn: $on)
+                .labelsHidden().toggleStyle(.switch)
+                .accessibilityLabel("啟用 \(info.name)")
         }
-        .buttonStyle(.plain)
-        .modifier(CardBackground())
+        .padding(12)
+        .background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 16))
     }
 }
 
@@ -281,12 +283,13 @@ struct OnboardingView: View {
             footer.padding(20)
         }
         .background(.regularMaterial)
+        .modifier(SKIRRTheme())
     }
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: "chart.bar.xaxis").font(.system(size: 40, weight: .semibold)).foregroundStyle(.tint)
-            Text("歡迎使用 AI Token Status").font(.largeTitle.weight(.bold))
+            Text("歡迎使用 OKM SKÍRR").font(.largeTitle.weight(.bold))
             Text("在選單列即時掌握 Claude Code 與 ChatGPT / Codex 的用量、限額與重置時間。")
                 .font(.title3).foregroundStyle(.secondary)
             Label("所有資料都只在這台 Mac 上讀取與計算。", systemImage: "lock.shield")
@@ -298,7 +301,7 @@ struct OnboardingView: View {
     private var choose: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("選擇要顯示的服務").font(.title2.weight(.bold))
-            Text("已自動偵測本機安裝狀態；偵測到的服務已預先勾選。").font(.callout).foregroundStyle(.secondary)
+            Text("已自動偵測本機安裝狀態；偵測到的服務已預先啟用。").font(.callout).foregroundStyle(.secondary)
             ForEach(providers) { p in
                 ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { sel[p.id] = $0 }))
             }
@@ -390,7 +393,13 @@ struct SettingsView: View {
     @State private var loginNote: String?
     @State private var confirmRepair = false
     @State private var autoUpdate = Updater.shared.automaticallyChecks
-    private let providers = ProviderDetector.detect()
+    private let providers: [ProviderInfo]
+    init(store: UsageStore? = nil, providers: [ProviderInfo]? = nil) {
+        self.store = store
+        self.providers = providers ?? ProviderDetector.detect()
+    }
+    @AppStorage("skirr.appearance") private var appearance = "system"
+    @AppStorage("skirr.animateSettingsLogo") private var animateLogo = true
     private static let version: String = {
         let i = Bundle.main.infoDictionary
         return "\(i?["CFBundleShortVersionString"] as? String ?? "?") (\(i?["CFBundleVersion"] as? String ?? "?"))"
@@ -435,54 +444,87 @@ struct SettingsView: View {
         }
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Claude 連線").font(.title3.weight(.bold))
-                ClaudeConnectionPanel(presentation: connection, busy: busy,
-                    note: loginNote ?? store?.claudeConnectionNote, awaitingLogin: awaitingLogin,
-                    action: performAction, confirmLogin: { connect() })
-                if connected {
-                    Toggle("自動保持 Claude 連線", isOn: $autoRepair)
-                        .toggleStyle(.switch).disabled(busy)
-                        .onChange(of: autoRepair) { _, value in
-                            Prefs.claudeCLIRefresh = value
-                            NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
-                        }
-                    Text("允許在登入需要更新時啟動 Claude Code，可能出現系統授權視窗。預設關閉，也可只在需要時手動修復。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("中斷 Claude 連接", role: .destructive) {
-                        Prefs.claudeAPI = false; connected = false; autoRepair = false
-                        awaitingLogin = false; loginNote = nil
-                        store?.claudeNeedsLogin = false
-                    }.disabled(busy)
-                }
-                if connection.action == .login {
-                    Link("安裝 Claude Code", destination: URL(string: "https://code.claude.com/docs/en/quickstart")!)
-                        .font(.caption)
-                }
-                Divider()
-                Text("顯示的服務").font(.title3.weight(.bold))
-                ForEach(providers) { p in
-                    ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { value in
-                        sel[p.id] = value
-                        if sel.values.contains(true) { Prefs.setEnabled(p.id, value) } else { sel[p.id] = true }
-                        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
-                    })).disabled(busy && p.id == "claude")
-                }
-                Toggle("自動檢查更新", isOn: $autoUpdate).toggleStyle(.switch)
-                    .onChange(of: autoUpdate) { _, value in Updater.shared.automaticallyChecks = value }
-                HStack {
-                    Text("版本 \(Self.version)").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("檢查更新…") { Updater.shared.checkForUpdates() }.modifier(GlassButton())
-                    Button("重新設定…") { WindowManager.shared.showOnboarding() }.modifier(GlassButton())
-                }
+    private var settingsContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SKIRRHeader(animate: animateLogo, version: Self.version)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("外觀").font(.headline)
+                VStack(spacing: 14) {
+                    HStack {
+                        Text("配色主題")
+                        Spacer()
+                        Picker("配色主題", selection: $appearance) {
+                            Text("跟隨系統").tag("system")
+                            Text("淺色模式").tag("light")
+                            Text("深色模式").tag("dark")
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 280)
+                    }
+                    Divider()
+                    Toggle(isOn: $animateLogo) { Text("開啟設定時播放標誌動畫").frame(maxWidth: .infinity, alignment: .leading) }.toggleStyle(.switch)
+                }.padding(16).background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 18))
             }
-            .padding(24)
+            Text("Claude 連線").font(.headline)
+            ClaudeConnectionPanel(presentation: connection, busy: busy,
+                note: loginNote ?? store?.claudeConnectionNote, awaitingLogin: awaitingLogin,
+                action: performAction, confirmLogin: { connect() })
+            if connected {
+                Toggle(isOn: $autoRepair) { Text("自動保持 Claude 連線").frame(maxWidth: .infinity, alignment: .leading) }
+                    .toggleStyle(.switch).disabled(busy)
+                    .onChange(of: autoRepair) { _, value in
+                        Prefs.claudeCLIRefresh = value
+                        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                    }
+                Text("允許在登入需要更新時啟動 Claude Code，可能出現系統授權視窗。預設關閉，也可只在需要時手動修復。")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("中斷 Claude 連接", role: .destructive) {
+                    Prefs.claudeAPI = false; connected = false; autoRepair = false
+                    awaitingLogin = false; loginNote = nil
+                    store?.claudeNeedsLogin = false
+                }.disabled(busy)
+            }
+            if connection.action == .login {
+                Link("安裝 Claude Code", destination: URL(string: "https://code.claude.com/docs/en/quickstart")!)
+                    .font(.caption)
+            }
+            Divider()
+            Text("顯示的服務").font(.headline)
+            ForEach(providers) { p in
+                ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { value in
+                    sel[p.id] = value
+                    if sel.values.contains(true) { Prefs.setEnabled(p.id, value) } else { sel[p.id] = true }
+                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                })).disabled(busy && p.id == "claude")
+            }
+            Text("至少需啟用一項服務。").font(.caption).foregroundStyle(.secondary)
+            Text("軟體更新").font(.headline)
+            VStack(spacing: 14) {
+            Toggle(isOn: $autoUpdate) { Text("自動檢查更新").frame(maxWidth: .infinity, alignment: .leading) }.toggleStyle(.switch)
+                .onChange(of: autoUpdate) { _, value in Updater.shared.automaticallyChecks = value }
+            HStack {
+                Text("版本 \(Self.version)").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("檢查更新…") { Updater.shared.checkForUpdates() }.modifier(GlassButton())
+            }
+            }.padding(16).background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 18))
+            HStack {
+                Text("需要重新選擇服務或設定連線？").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("重新設定…") { WindowManager.shared.showOnboarding() }.modifier(GlassButton())
+            }
+        }
+        .padding(28).padding(.top, 18)
+    }
+
+    var body: some View {
+        Group {
+            if isSnapshot { settingsContent }
+            else { ScrollView { settingsContent } }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .tint(SKIRRBrand.accent)
+        .accentColor(SKIRRBrand.accent)
+        .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
         .confirmationDialog("修復 Claude 連線？", isPresented: $confirmRepair, titleVisibility: .visible) {
             Button("修復連線") { connect(repair: true) }
             Button("取消", role: .cancel) {}
@@ -498,8 +540,9 @@ struct SettingsView: View {
 /// Liquid Glass buttons; plain bordered styles in snapshot mode (ImageRenderer can't draw glass).
 struct GlassButton: ViewModifier {
     var prominent = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
-        if isSnapshot {
+        if isSnapshot || reduceTransparency {
             if prominent { content.buttonStyle(.borderedProminent) } else { content.buttonStyle(.bordered) }
         } else {
             if prominent { content.buttonStyle(.glassProminent) } else { content.buttonStyle(.glass) }
