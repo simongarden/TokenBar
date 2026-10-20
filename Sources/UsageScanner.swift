@@ -2,9 +2,26 @@ import Foundation
 
 /// Scans local log files read-only. Never writes to source files.
 actor UsageScanner {
+    private struct ClaudeMessageKey: Hashable {
+        let messageID: String
+        let requestID: String
+    }
+    private struct ClaudeRecord {
+        let date: Date
+        let tokens: TokenBreakdown
+        let sidechain: Bool
+    }
+    private struct FileIdentity: Equatable {
+        let device: UInt64
+        let inode: UInt64
+    }
     private struct FileState {
         var offset: UInt64 = 0
         var mtime: Date?
+        var size: UInt64 = 0
+        var identity: FileIdentity?
+        var claudeMessages: [ClaudeMessageKey: ClaudeRecord] = [:]
+        var claudeUnkeyed: [ClaudeRecord] = []
         var days: [DayKey: TokenBreakdown] = [:]
         var lastCodexTotal = -1
         var recent: [(Date, TokenBreakdown)] = []
@@ -12,15 +29,18 @@ actor UsageScanner {
     }
 
     private var states: [Service: [String: FileState]] = [:]
-    private var claudeSeen = Set<String>()
     private let fm = FileManager.default
-    private let home = FileManager.default.homeDirectoryForCurrentUser
+    private let home: URL
     private let isoFrac: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
     private let iso = ISO8601DateFormatter()
+
+    init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        self.home = home
+    }
 
     func scanAll(claude5hLimit: Int, enabled: Set<Service>) -> [ServiceSummary] {
         // Disabled providers are not scanned at all.
@@ -145,8 +165,18 @@ actor UsageScanner {
 
     /// Returns only complete new lines since the cached offset.
     private func newLines(_ path: String, _ st: inout FileState) -> [Data] {
-        let (size, _) = attrs(path)
-        if size < st.offset { st = FileState() }
+        guard let a = try? fm.attributesOfItem(atPath: path),
+              let size = (a[.size] as? NSNumber)?.uint64Value,
+              let inode = (a[.systemFileNumber] as? NSNumber)?.uint64Value,
+              let device = (a[.systemNumber] as? NSNumber)?.uint64Value else { return [] }
+        let mtime = a[.modificationDate] as? Date
+        let identity = FileIdentity(device: device, inode: inode)
+        // Replacements and in-place rewrites must rebuild both rows and aggregates.
+        if let old = st.identity,
+           old != identity || size < st.size || (size == st.size && mtime != st.mtime) {
+            st = FileState()
+        }
+        st.identity = identity; st.size = size; st.mtime = mtime
         guard size > st.offset, let fh = FileHandle(forReadingAtPath: path) else { return [] }
         defer { try? fh.close() }
         do {
@@ -192,35 +222,76 @@ actor UsageScanner {
         let dir = home.appending(path: ".claude/projects")
         let note = "~/.claude/projects/**/*.jsonl"
         guard fm.fileExists(atPath: dir.path) else {
+            states[.claude] = [:]
             return summarize(.claude, note: note, missing: "找不到 ~/.claude/projects")
         }
-        var map = states[.claude] ?? [:]
+        let urls = files(under: dir, ext: "jsonl").sorted { $0.path < $1.path }
+        let paths = Set(urls.map(\.path))
+        let oldMap = states[.claude] ?? [:]
+        var map = oldMap.filter { paths.contains($0.key) }
+        var changed = map.count != oldMap.count
         let needle = Data("\"usage\"".utf8)
-        for url in files(under: dir, ext: "jsonl") {
-            var st = map[url.path] ?? FileState()
-            for line in newLines(url.path, &st) where line.range(of: needle) != nil {
+        for url in urls {
+            let previous = map[url.path]
+            var st = previous ?? FileState()
+            let lines = newLines(url.path, &st)
+            changed = changed || previous == nil || previous?.mtime != st.mtime || previous?.size != st.size
+                || previous?.identity != st.identity || !lines.isEmpty
+            for line in lines where line.range(of: needle) != nil {
                 guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      obj["type"] == nil || obj["type"] as? String == "assistant",
                       let msg = obj["message"] as? [String: Any],
                       let usage = msg["usage"] as? [String: Any],
                       let date = parseDate(obj["timestamp"] as? String) else { continue }
-                // Streaming writes the same message several times; dedupe by message id + request id.
-                if let mid = msg["id"] as? String {
-                    let key = mid + ":" + ((obj["requestId"] as? String) ?? "")
-                    if !claudeSeen.insert(key).inserted { continue }
-                }
-                let t = TokenBreakdown(input: int(usage["input_tokens"]),
-                                       output: int(usage["output_tokens"]),
-                                       cacheRead: int(usage["cache_read_input_tokens"]),
-                                       cacheWrite: int(usage["cache_creation_input_tokens"]))
-                st.days[date.dayKey, default: .init()] += t
-                if date > Date().addingTimeInterval(-24 * 3600) {
-                    st.recent.append((date, t))
+                let t = TokenBreakdown(input: max(0, int(usage["input_tokens"])),
+                                       output: max(0, int(usage["output_tokens"])),
+                                       cacheRead: max(0, int(usage["cache_read_input_tokens"])),
+                                       cacheWrite: max(0, int(usage["cache_creation_input_tokens"])))
+                let record = ClaudeRecord(date: date, tokens: t,
+                                          sidechain: (obj["isSidechain"] as? Bool == true) || url.path.contains("/subagents/"))
+                if let mid = msg["id"] as? String, !mid.isEmpty {
+                    let key = ClaudeMessageKey(messageID: mid, requestID: (obj["requestId"] as? String) ?? "")
+                    // Usage is cumulative within a message. Last complete snapshot wins, even
+                    // when a later snapshot corrects counters downward.
+                    st.claudeMessages[key] = record
+                } else {
+                    st.claudeUnkeyed.append(record)
                 }
             }
             map[url.path] = st
         }
+        if changed { rebuildClaudeAggregates(&map) }
         states[.claude] = map
         return summarize(.claude, note: note, missing: nil)
+    }
+
+    /// Reconcile cross-file transcript copies deterministically, then build all visible totals
+    /// from the same winners. Deleting/truncating a file can promote another surviving copy.
+    private func rebuildClaudeAggregates(_ map: inout [String: FileState]) {
+        var winners: [ClaudeMessageKey: (path: String, record: ClaudeRecord)] = [:]
+        for path in map.keys.sorted() {
+            guard let st = map[path] else { continue }
+            for (key, record) in st.claudeMessages {
+                if let old = winners[key] {
+                    if old.record.sidechain != record.sidechain {
+                        if record.sidechain { continue }
+                    } else if record.date <= old.record.date { continue }
+                }
+                winners[key] = (path, record)
+            }
+        }
+        for path in Array(map.keys) {
+            map[path]?.days = [:]; map[path]?.recent = []
+        }
+        let cutoff = Date().addingTimeInterval(-24 * 3600)
+        func add(_ record: ClaudeRecord, path: String) {
+            map[path]!.days[record.date.dayKey, default: .init()] += record.tokens
+            if record.date > cutoff { map[path]!.recent.append((record.date, record.tokens)) }
+        }
+        for (path, record) in winners.values { add(record, path: path) }
+        for path in map.keys.sorted() {
+            for record in map[path]!.claudeUnkeyed { add(record, path: path) }
+        }
     }
 
     // MARK: - Codex: ~/.codex/sessions/**/*.jsonl  (event_msg / token_count)
@@ -229,11 +300,14 @@ actor UsageScanner {
         let dir = home.appending(path: ".codex/sessions")
         let note = "~/.codex/sessions/**/*.jsonl（token_count 事件）"
         guard fm.fileExists(atPath: dir.path) else {
+            states[.codex] = [:]
             return summarize(.codex, note: note, missing: "找不到 ~/.codex/sessions")
         }
-        var map = states[.codex] ?? [:]
+        let urls = files(under: dir, ext: "jsonl")
+        let paths = Set(urls.map(\.path))
+        var map = (states[.codex] ?? [:]).filter { paths.contains($0.key) }
         let needle = Data("\"token_count\"".utf8)
-        for url in files(under: dir, ext: "jsonl") {
+        for url in urls {
             var st = map[url.path] ?? FileState()
             for line in newLines(url.path, &st) where line.range(of: needle) != nil {
                 guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],

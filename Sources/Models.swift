@@ -114,6 +114,8 @@ enum SettingsKey {
     static let labelMode = "menuBarLabelMode"
     static let claudeOAuth = "claudeUseOAuth"
     static let claude5hLimit = "claude5hTokenLimit"
+    static let claudeCredentialConsent = "claudeCredentialReadConsentV1"
+    static let claudeCLIConsent = "claudeBackgroundCLIConsentV1"
     static let claudeCLIRefresh = "claudeCLIRefreshOnExpiry"
 }
 

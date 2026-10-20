@@ -15,13 +15,20 @@ enum Prefs {
     static var grokEnabled: Bool { isEnabled("grok") }
     static var enabledServices: Set<Service> { Set(Service.allCases.filter { isEnabled($0) }) }
     static var claudeAPI: Bool {
-        get { UserDefaults.standard.object(forKey: SettingsKey.claudeOAuth) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.claudeOAuth) }
+        get { ClaudeAccessPolicy.canReadCredentials() }
+        set {
+            if !newValue {
+                ClaudeAccessPolicy.revoke()
+                NotificationCenter.default.post(name: .tokenBarCredentialsChanged, object: nil)
+            } else if UserDefaults.standard.bool(forKey: SettingsKey.claudeCredentialConsent) {
+                UserDefaults.standard.set(true, forKey: SettingsKey.claudeOAuth)
+            }
+        }
     }
-    /// Run `claude doctor` when the Claude credential has expired (default on).
+    /// A separate, explicit opt-in. Legacy default-on preferences never grant CLI execution.
     static var claudeCLIRefresh: Bool {
-        get { UserDefaults.standard.object(forKey: SettingsKey.claudeCLIRefresh) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.claudeCLIRefresh) }
+        get { ClaudeAccessPolicy.canRunCLI() }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.claudeCLIConsent) }
     }
 
     /// Existing installs (have prior TokenBar data) skip onboarding with everything enabled.
@@ -42,6 +49,7 @@ enum Prefs {
 extension Notification.Name {
     static let tokenBarClosePopover = Notification.Name("TokenBarClosePopover")
     static let tokenBarPrefsChanged = Notification.Name("TokenBarPrefsChanged")
+    static let tokenBarCredentialsChanged = Notification.Name("TokenBarCredentialsChanged")
 }
 
 // MARK: - Detection
@@ -104,7 +112,7 @@ enum ProviderDetector {
         var message: String {
             switch self {
             case .ok: "成功"
-            case .notFound: "找不到憑證（請先在終端機執行 claude 並登入）"
+            case .notFound: "尚未登入 Claude"
             case .denied: "已拒絕"
             case .error(let c): "錯誤碼 \(c)"
             }
@@ -123,10 +131,19 @@ enum ProviderDetector {
     /// Triggers the Keychain read so macOS shows its access prompt. The app is
     /// activated first: an LSUIElement app that isn't frontmost can get
     /// errSecInteractionNotAllowed (-25308) instead of a prompt.
-    @MainActor static func authorizeClaudeKeychain() async -> KeychainAuth {
+    @MainActor static func authorizeClaudeKeychain(notify: Bool = true) async -> KeychainAuth {
         NSApp.activate()
         try? await Task.sleep(for: .milliseconds(150))
-        let st: OSStatus = await Task.detached { keychainStatus(allowUI: true) }.value
+        let st: OSStatus = await Task.detached {
+            let (status, data) = ClaudeKeychain.copyData(allowUI: true)
+            guard status == errSecSuccess else { return status }
+            guard let data, ClaudeKeychain.parseToken(data) != nil else { return errSecDecode }
+            return errSecSuccess
+        }.value
+        if st == errSecSuccess {
+            ClaudeAccessPolicy.grantCredentialRead()
+            if notify { NotificationCenter.default.post(name: .tokenBarCredentialsChanged, object: nil) }
+        }
         klog.notice("keychain authorize OSStatus=\(st, privacy: .public)")
         return classify(st)
     }
@@ -170,7 +187,8 @@ private let klog = Logger(subsystem: "com.okmaster.TokenBar", category: "keychai
 
     func showSettings() {
         NotificationCenter.default.post(name: .tokenBarClosePopover, object: nil)
-        settings = present(settings, title: "AI Token Status 設定", view: AnyView(SettingsView()))
+        settings = present(settings, title: "AI Token Status 設定", view: AnyView(SettingsView(store: store)))
+        settings?.setContentSize(NSSize(width: 520, height: 600))
     }
 
     private func present(_ existing: NSWindow?, title: String, view: AnyView) -> NSWindow {
@@ -234,8 +252,6 @@ struct OnboardingView: View {
     @Environment(UsageStore.self) private var store: UsageStore?
     @State private var step: Int
     @State private var sel: [String: Bool]
-    @State private var authResult: ProviderDetector.KeychainAuth?
-    @State private var authorizing = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     private let providers: [ProviderInfo]
 
@@ -293,37 +309,20 @@ struct OnboardingView: View {
     }
 
     private var authorize: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: "key.viewfinder").font(.system(size: 36, weight: .semibold)).foregroundStyle(.tint)
-            Text("Claude 用量授權").font(.title2.weight(.bold))
-            Text("若要顯示 Claude 的 5 小時與每週限額百分比，AI Token Status 需要讀取鑰匙圈中 Claude Code 的登入憑證，並向 Anthropic 查詢你自己的用量（與 Claude Code 的 /usage 相同）。")
+        let connection = ClaudeConnectionPresentation(enabled: Prefs.claudeAPI, status: store?.claudeStatus,
+                                                       needsLogin: store?.claudeNeedsLogin == true)
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("連接 Claude").font(.title2.weight(.bold))
+            Text("連接後就能看到用量與重置時間。你也可以稍後再設定，先查看本機用量。")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Text("按下「授權」後，macOS 會跳出鑰匙圈存取視窗，請選擇「永遠允許」。憑證只保存在記憶體中，不會寫入任何檔案。")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Button { runAuth() } label: {
-                    Label(authResult == nil || authResult == .ok ? "授權" : "重試",
-                          systemImage: authResult == nil || authResult == .ok ? "checkmark.shield" : "arrow.clockwise")
-                }
-                .modifier(GlassButton(prominent: true)).disabled(authorizing || authResult == .ok)
-                if authorizing { ProgressView().controlSize(.small) }
-                if let r = authResult {
-                    Label(r == .ok ? "成功" : "\(r.message) — 將改用本機 token 統計",
-                          systemImage: r == .ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(r == .ok ? .green : .orange).font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    private func runAuth() {
-        authorizing = true
-        Task { @MainActor in
-            let r = await ProviderDetector.authorizeClaudeKeychain()
-            authResult = r
-            Prefs.claudeAPI = r == .ok
-            authorizing = false
+            ClaudeConnectionPanel(presentation: connection, busy: store?.isConnectingClaude == true,
+                                  note: store?.claudeConnectionNote, action: {
+                if connection.action == .connect {
+                    Task { await store?.connectClaude() }
+                } else { WindowManager.shared.showSettings() }
+            })
+            Text("macOS 可能要求你允許存取 Claude 登入資料。你可隨時到設定中斷連接。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -383,77 +382,116 @@ struct OnboardingView: View {
 // MARK: - Settings
 
 struct SettingsView: View {
+    var store: UsageStore? = nil
     @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: ["claude", "codex", "grok"].map { ($0, Prefs.isEnabled($0)) })
-    @State private var claudeAPI = Prefs.claudeAPI
-    @State private var cliRefresh = Prefs.claudeCLIRefresh
-    @State private var authorizing = false
-    @State private var authNote: String?
+    @State private var connected = Prefs.claudeAPI
+    @State private var autoRepair = Prefs.claudeCLIRefresh
+    @State private var awaitingLogin = false
+    @State private var loginNote: String?
+    @State private var confirmRepair = false
     @State private var autoUpdate = Updater.shared.automaticallyChecks
     private let providers = ProviderDetector.detect()
     private static let version: String = {
         let i = Bundle.main.infoDictionary
         return "\(i?["CFBundleShortVersionString"] as? String ?? "?") (\(i?["CFBundleVersion"] as? String ?? "?"))"
     }()
+    private var busy: Bool { store?.isConnectingClaude == true }
+    private var connection: ClaudeConnectionPresentation {
+        ClaudeConnectionPresentation(enabled: connected, status: store?.claudeStatus, needsLogin: store?.claudeNeedsLogin == true)
+    }
 
-    private func apply(_ on: Bool) {
-        Prefs.claudeAPI = on
-        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+    private func connect(repair: Bool = false) {
+        guard let store else { return }
+        awaitingLogin = false; loginNote = nil
+        Task { @MainActor in
+            await store.connectClaude(repair: repair)
+            connected = Prefs.claudeAPI
+            sel["claude"] = Prefs.isEnabled(.claude)
+        }
+    }
+
+    private func login() {
+        guard let cli = ClaudeCLI.locate() else {
+            loginNote = "尚未安裝 Claude Code。請先按下方的「安裝 Claude Code」，完成後再回來連接。"
+            return
+        }
+        do {
+            let command = try cli.loginCommandFile()
+            guard NSWorkspace.shared.open(command) else {
+                try? FileManager.default.removeItem(at: command.deletingLastPathComponent())
+                loginNote = "無法開啟登入視窗，請稍後再試。"; return
+            }
+            awaitingLogin = true
+            loginNote = "登入視窗已開啟。依畫面操作，完成後按下方按鈕確認。"
+        } catch { loginNote = "登入視窗無法準備完成，請稍後再試。" }
+    }
+
+    private func performAction() {
+        switch connection.action {
+        case .connect: connect()
+        case .repair: confirmRepair = true
+        case .login: login()
+        case .none: break
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("顯示的服務").font(.title3.weight(.bold))
-            ForEach(providers) { p in
-                ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { v in
-                    sel[p.id] = v
-                    if sel.values.contains(true) { Prefs.setEnabled(p.id, v) } else { sel[p.id] = true }
-                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
-                }))
-            }
-            HStack(spacing: 8) {
-                Toggle("Claude 使用官方用量 API（需鑰匙圈授權）", isOn: $claudeAPI)
-                    .toggleStyle(.switch).disabled(authorizing)
-                if authorizing { ProgressView().controlSize(.small) }
-            }
-            .onChange(of: claudeAPI) { _, v in
-                guard v else { apply(false); return }
-                // Background refreshes never prompt, so turning it on is where the Keychain prompt happens.
-                authorizing = true; authNote = nil
-                Task { @MainActor in
-                    let r = await ProviderDetector.authorizeClaudeKeychain()
-                    authorizing = false
-                    if r == .ok { apply(true) } else { authNote = "鑰匙圈授權失敗：\(r.message)"; claudeAPI = false }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Claude 連線").font(.title3.weight(.bold))
+                ClaudeConnectionPanel(presentation: connection, busy: busy,
+                    note: loginNote ?? store?.claudeConnectionNote, awaitingLogin: awaitingLogin,
+                    action: performAction, confirmLogin: { connect() })
+                if connected {
+                    Toggle("自動保持 Claude 連線", isOn: $autoRepair)
+                        .toggleStyle(.switch).disabled(busy)
+                        .onChange(of: autoRepair) { _, value in
+                            Prefs.claudeCLIRefresh = value
+                            NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                        }
+                    Text("允許在登入需要更新時啟動 Claude Code，可能出現系統授權視窗。預設關閉，也可只在需要時手動修復。")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button("中斷 Claude 連接", role: .destructive) {
+                        Prefs.claudeAPI = false; connected = false; autoRepair = false
+                        awaitingLogin = false; loginNote = nil
+                        store?.claudeNeedsLogin = false
+                    }.disabled(busy)
+                }
+                if connection.action == .login {
+                    Link("安裝 Claude Code", destination: URL(string: "https://code.claude.com/docs/en/quickstart")!)
+                        .font(.caption)
+                }
+                Divider()
+                Text("顯示的服務").font(.title3.weight(.bold))
+                ForEach(providers) { p in
+                    ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { value in
+                        sel[p.id] = value
+                        if sel.values.contains(true) { Prefs.setEnabled(p.id, value) } else { sel[p.id] = true }
+                        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                    })).disabled(busy && p.id == "claude")
+                }
+                Toggle("自動檢查更新", isOn: $autoUpdate).toggleStyle(.switch)
+                    .onChange(of: autoUpdate) { _, value in Updater.shared.automaticallyChecks = value }
+                HStack {
+                    Text("版本 \(Self.version)").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("檢查更新…") { Updater.shared.checkForUpdates() }.modifier(GlassButton())
+                    Button("重新設定…") { WindowManager.shared.showOnboarding() }.modifier(GlassButton())
                 }
             }
-            if let n = authNote {
-                Text(n).font(.caption).foregroundStyle(.orange)
-            }
-            Toggle("憑證過期時自動執行 claude doctor 更新", isOn: $cliRefresh)
-                .toggleStyle(.switch).disabled(!claudeAPI)
-                .onChange(of: cliRefresh) { _, v in
-                    Prefs.claudeCLIRefresh = v
-                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
-                }
-            Toggle("自動檢查更新", isOn: $autoUpdate)
-                .toggleStyle(.switch)
-                .onChange(of: autoUpdate) { _, v in Updater.shared.automaticallyChecks = v }
-            Spacer()
-            HStack {
-                Text("版本 \(Self.version)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button { Updater.shared.checkForUpdates() } label: {
-                    Label("檢查更新…", systemImage: "arrow.down.circle")
-                }
-                .modifier(GlassButton()).controlSize(.large)
-                Button { WindowManager.shared.showOnboarding() } label: {
-                    Label("重新執行安裝引導", systemImage: "arrow.counterclockwise")
-                }
-                .modifier(GlassButton()).controlSize(.large)
-            }
+            .padding(24)
         }
-        .padding(.horizontal, 28).padding(.top, 36).padding(.bottom, 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
+        .confirmationDialog("修復 Claude 連線？", isPresented: $confirmRepair, titleVisibility: .visible) {
+            Button("修復連線") { connect(repair: true) }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("會啟動已安裝的 Claude Code 更新登入，可能顯示系統授權視窗。不會傳送對話或執行 AI 工作，也不會開啟背景自動修復。")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tokenBarCredentialsChanged)) { _ in
+            connected = Prefs.claudeAPI; autoRepair = Prefs.claudeCLIRefresh
+        }
     }
 }
 

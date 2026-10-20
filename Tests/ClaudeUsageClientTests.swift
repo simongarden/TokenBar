@@ -36,7 +36,7 @@ private func freshDefaults() -> String {
 
     @Test func successIsCachedWhileThrottled() async {
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: goodToken, transport: api.transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: goodToken, transport: api.transport)
         let (r1, s1) = await c.fetch(now: t0)
         #expect(s1 == .ok)
         #expect(r1?.primary?.usedPercent == 42)
@@ -51,12 +51,12 @@ private func freshDefaults() -> String {
     /// Regression: an error used to be replaced by the disk cache (.ok) on the next 30 s refresh.
     @Test func httpErrorIsNotMaskedBySavedResult() async {
         let d = freshDefaults()
-        let warm = ClaudeUsageClient(defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200, body: okBody).transport)
+        let warm = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200, body: okBody).transport)
         _ = await warm.fetch(now: t0)
 
         // Relaunch after the throttle passed; the API now fails.
         let api = FakeAPI(code: 500)
-        let c = ClaudeUsageClient(defaultsSuite: d, readToken: goodToken, transport: api.transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: d, readToken: goodToken, transport: api.transport)
         let later = t0.addingTimeInterval(10 * 60)
         let (r1, s1) = await c.fetch(now: later)
         #expect(r1 == nil && s1 == .httpError(500))
@@ -68,7 +68,7 @@ private func freshDefaults() -> String {
 
     @Test func rateLimitedStaysWaiting() async {
         let api = FakeAPI(code: 429, headers: ["Retry-After": "120"])
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: goodToken, transport: api.transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: goodToken, transport: api.transport)
         let (_, s1) = await c.fetch(now: t0)
         #expect(s1 == .waiting(t0.addingTimeInterval(120)))
         let (r2, s2) = await c.fetch(now: t0.addingTimeInterval(30))
@@ -78,10 +78,10 @@ private func freshDefaults() -> String {
 
     @Test func launchShowsSavedResultWithoutCalling() async {
         let d = freshDefaults()
-        let warm = ClaudeUsageClient(defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200, body: okBody).transport)
+        let warm = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200, body: okBody).transport)
         _ = await warm.fetch(now: t0)
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: d, readToken: goodToken, transport: api.transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: d, readToken: goodToken, transport: api.transport)
         let (r, s) = await c.fetch(now: t0.addingTimeInterval(60))
         #expect(s == .ok && r?.primary?.usedPercent == 42)
         #expect(api.count == 0)
@@ -91,7 +91,7 @@ private func freshDefaults() -> String {
         let d = freshDefaults()
         let until = t0.addingTimeInterval(600)
         UserDefaults(suiteName: d)!.set(until, forKey: ClaudeUsageClient.nextKey)
-        let c = ClaudeUsageClient(defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200).transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: d, readToken: goodToken, transport: FakeAPI(code: 200).transport)
         let (r, s) = await c.fetch(now: t0)
         #expect(r == nil && s == .waiting(until))
     }
@@ -105,7 +105,7 @@ private func freshDefaults() -> String {
             return granted.withLock { $0 } ? .success(("tok", nil)) : .failure(.denied)
         }
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: reader, transport: api.transport)
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: reader, transport: api.transport)
         #expect(await c.fetch(now: t0).1 == .denied)
         #expect(await c.fetch(now: t0.addingTimeInterval(30)).1 == .denied)
         #expect(reads.withLock { $0 } == 1)
@@ -118,7 +118,7 @@ private func freshDefaults() -> String {
 
     @Test func expiredTokenSkipsCall() async {
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: { .success(("tok", Date(timeIntervalSince1970: 1))) },
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: { .success(("tok", Date(timeIntervalSince1970: 1))) },
                                   transport: api.transport)
         #expect(await c.fetch(now: t0).1 == .expired)
         #expect(api.count == 0)
@@ -149,7 +149,7 @@ private func freshDefaults() -> String {
     @Test func expiredTokenIsRefreshedByCLIThenUsed() async {
         let cred = FakeCredential(fixes: true, t0: t0)
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: cred.reader, transport: api.transport,
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: cred.reader, transport: api.transport,
                                   refreshCredential: cred.refresher)
         let (r, s) = await c.fetch(now: t0)
         #expect(s == .ok && r?.primary?.usedPercent == 42)
@@ -162,13 +162,13 @@ private func freshDefaults() -> String {
         let suite = freshDefaults()
         let cred = FakeCredential(fixes: false, t0: t0)
         let api = FakeAPI(code: 200, body: okBody)
-        let c = ClaudeUsageClient(defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
                                   refreshCredential: cred.refresher)
         #expect(await c.fetch(now: t0).1 == .expired)
         #expect(await c.fetch(now: t0.addingTimeInterval(6 * 60)).1 == .expired)   // past the 5 min API throttle
         #expect(cred.refreshCount == 1)
 
-        let relaunched = ClaudeUsageClient(defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
+        let relaunched = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: suite, readToken: cred.reader, transport: api.transport,
                                            refreshCredential: cred.refresher)
         #expect(await relaunched.fetch(now: t0.addingTimeInterval(12 * 60)).1 == .expired)
         #expect(cred.refreshCount == 1)
@@ -181,7 +181,7 @@ private func freshDefaults() -> String {
     /// Setting off / CLI missing: the refresher reports it did not run and the Keychain is not re-read for it.
     @Test func refresherThatDoesNotRunLeavesExpired() async {
         let cred = FakeCredential(fixes: false, t0: t0)
-        let c = ClaudeUsageClient(defaultsSuite: freshDefaults(), readToken: cred.reader,
+        let c = ClaudeUsageClient(hasFixtureConsent: true, defaultsSuite: freshDefaults(), readToken: cred.reader,
                                   transport: FakeAPI(code: 200, body: okBody).transport,
                                   refreshCredential: { false })
         #expect(await c.fetch(now: t0).1 == .expired)
@@ -203,5 +203,15 @@ private func freshDefaults() -> String {
         #expect(t.token == "abc")
         #expect(t.expiresAt == Date(timeIntervalSince1970: 1_900_000_000))
         #expect(ClaudeKeychain.parseToken(Data("{}".utf8)) == nil)
+    }
+}
+
+private extension ClaudeUsageClient {
+    init(hasFixtureConsent: Bool, defaultsSuite: String,
+         readToken: @escaping TokenReader,
+         transport: @escaping Transport,
+         refreshCredential: CredentialRefresher? = nil) {
+        self.init(defaultsSuite: defaultsSuite, readToken: readToken, transport: transport,
+                  refreshCredential: refreshCredential, hasConsent: { hasFixtureConsent })
     }
 }

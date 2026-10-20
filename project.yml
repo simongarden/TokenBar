@@ -57,6 +57,8 @@ targets:
     sources:
       - Tests
       - Sources/Models.swift
+      - Sources/UsageScanner.swift
+      - Sources/ClaudeConnectionPresentation.swift
       - Sources/ClaudeUsageClient.swift
       - Sources/RecentFileWatcher.swift
       - Sources/ClaudeCLI.swift

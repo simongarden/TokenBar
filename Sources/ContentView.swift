@@ -31,24 +31,20 @@ struct ContentView: View {
     private func rateNote(for s: ServiceSummary) -> String {
         switch s.service {
         case .claude:
-            let st: String = switch store.claudeStatus {
-            case nil: "官方 API 已停用"
-            case .ok?: ""
-            case .noCredential?: "鑰匙圈找不到 Claude Code 憑證"
-            case .denied?: "尚未授權讀取鑰匙圈（請到設定重新開啟官方用量 API）"
-            case .httpError(let c)?: "API 錯誤 \(c)"
-            case .failed?: "API 讀取失敗"
-            case .expired?: "Claude Code 登入憑證已過期：請在終端機執行一次 claude CLI 以更新（Claude 桌面版不會更新此憑證）"
-            case .waiting(let d)?: "API 限流中，\(d.formatted(date: .omitted, time: .shortened)) 後再試"
-            }
-            return s.rate == nil ? "\(st)" : st
+            return ClaudeConnectionPresentation(enabled: Prefs.claudeAPI, status: store.claudeStatus,
+                                                needsLogin: store.claudeNeedsLogin).title
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"
         }
     }
 
     private var cards: some View {
         VStack(spacing: 8) {
-            ForEach(store.summaries) { ServiceCard(summary: $0, rateNote: rateNote(for: $0)) }
+            ForEach(store.summaries) { summary in
+                ServiceCard(summary: summary, rateNote: rateNote(for: summary),
+                    connection: summary.service == .claude ? ClaudeConnectionPresentation(
+                        enabled: Prefs.claudeAPI, status: store.claudeStatus, needsLogin: store.claudeNeedsLogin) : nil,
+                    isConnecting: store.isConnectingClaude)
+            }
         }
     }
 
@@ -103,6 +99,8 @@ struct ContentView: View {
 struct ServiceCard: View {
     let summary: ServiceSummary
     let rateNote: String
+    var connection: ClaudeConnectionPresentation? = nil
+    var isConnecting = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -119,6 +117,14 @@ struct ServiceCard: View {
                 }
             }
             rateSection
+            if let connection, connection.action != .none {
+                HStack {
+                    Text(isConnecting ? "正在處理連線…" : connection.title).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(connection.actionTitle) { WindowManager.shared.showSettings() }
+                        .modifier(GlassButton()).controlSize(.small).disabled(isConnecting)
+                }
+            }
             if let p = summary.periodTokens {
                 HStack(spacing: 4) {
                     Text("本週期").font(.caption2).foregroundStyle(.secondary)
@@ -166,7 +172,7 @@ struct ServiceCard: View {
                 if let w = r.secondary { windowRow(w, title: "每週", est: r.isEstimate) }
             }
         } else {
-            Label("用量百分比：— " + rateNote, systemImage: "gauge.with.dots.needle.0percent")
+            Label(connection?.detail ?? rateNote, systemImage: "gauge.with.dots.needle.0percent")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

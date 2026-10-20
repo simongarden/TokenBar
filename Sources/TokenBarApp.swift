@@ -12,6 +12,9 @@ final class UsageStore {
     var lastUpdated: Date?
     var isRefreshing = false
     var claudeStatus: ClaudeUsageClient.Status?
+    var isConnectingClaude = false
+    var claudeNeedsLogin = false
+    var claudeConnectionNote: String?
     private let scanner = UsageScanner()
     private let claudeClient = ClaudeUsageClient(refreshCredential: ClaudeCLI.refreshIfEnabled)
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -23,7 +26,7 @@ final class UsageStore {
 
     init() {
         UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.mixed.rawValue,
-                                                  SettingsKey.claudeOAuth: true,
+                                                  SettingsKey.claudeOAuth: false,
                                                   SettingsKey.claude5hLimit: 0])
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -35,8 +38,16 @@ final class UsageStore {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 Task {
-                    await self.claudeClient.credentialsChanged()
                     await self.refresh(); await self.pollActivity()
+                }
+            }
+        }
+        NotificationCenter.default.addObserver(forName: .tokenBarCredentialsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task {
+                    await self.claudeClient.credentialsChanged()
+                    await self.refresh()
                 }
             }
         }
@@ -48,15 +59,16 @@ final class UsageStore {
         }
     }
 
-    func refresh() async {
-        guard !isRefreshing else { return }
+    func refresh(allowConnectionAction: Bool = false) async {
+        guard !isRefreshing, !isConnectingClaude || allowConnectionAction else { return }
         isRefreshing = true
         let d = UserDefaults.standard
         var s = await scanner.scanAll(claude5hLimit: d.integer(forKey: SettingsKey.claude5hLimit), enabled: Prefs.enabledServices)
         if Prefs.claudeAPI && Prefs.isEnabled(.claude) {
-            let (rate, st) = await claudeClient.fetch()
-            claudeStatus = st
-            if let rate, let i = s.firstIndex(where: { $0.service == .claude }) {
+            let (rate, st) = await claudeClient.fetch(allowAutomaticRefresh: !isConnectingClaude)
+            claudeStatus = Prefs.claudeAPI ? st : nil
+            if st == .ok { claudeNeedsLogin = false; claudeConnectionNote = nil }
+            if Prefs.claudeAPI, let rate, let i = s.firstIndex(where: { $0.service == .claude }) {
                 s[i].rate = rate
                 if let r = rate.primary?.resetsAt, r > .now {
                     let start = r.addingTimeInterval(-5 * 3600)
@@ -66,9 +78,47 @@ final class UsageStore {
                 }
             }
         } else { claudeStatus = nil }
-        summaries = s
+        summaries = s.filter { Prefs.isEnabled($0.service) }
         lastUpdated = .now
         isRefreshing = false
+    }
+
+    /// Called only by an explicit Connect/Repair action. Repair is a one-shot authorization;
+    /// it never enables unattended CLI execution for later refreshes.
+    func connectClaude(repair: Bool = false) async {
+        guard !isConnectingClaude else { return }
+        isConnectingClaude = true
+        claudeConnectionNote = nil
+        defer { isConnectingClaude = false }
+        // Serialize with any earlier refresh; new scheduled refreshes wait while this action runs.
+        while isRefreshing {
+            do { try await Task.sleep(for: .milliseconds(100)) }
+            catch { return }
+        }
+        let authorization = await ProviderDetector.authorizeClaudeKeychain(notify: false)
+        guard authorization == .ok else {
+            switch authorization {
+            case .notFound: claudeStatus = .noCredential; claudeNeedsLogin = true
+            case .denied: claudeStatus = .denied
+            default: claudeStatus = .failed
+            }
+            return
+        }
+        Prefs.setEnabled("claude", true)
+        if repair {
+            guard let cli = ClaudeCLI.locate() else {
+                claudeNeedsLogin = true
+                claudeConnectionNote = "尚未找到 Claude Code。請先安裝，再按登入。"
+                return
+            }
+            _ = await cli.runDoctor()
+        }
+        await claudeClient.credentialsChanged()
+        await refresh(allowConnectionAction: true)
+        if repair, claudeStatus == .expired || claudeStatus == .httpError(401) {
+            claudeNeedsLogin = true
+            claudeConnectionNote = "這次需要重新登入。請按「登入 Claude」，完成後再回到這裡。"
+        }
     }
 
     private func pollActivity() async {
@@ -377,7 +427,7 @@ extension ClaudeCLI {
     /// Expired Claude credential: let Claude Code refresh it with `claude doctor` (setting on, CLI found).
     /// True if the CLI ran; the client re-reads the Keychain to see whether it helped.
     @Sendable static func refreshIfEnabled() async -> Bool {
-        guard Prefs.claudeCLIRefresh else { return false }
+        guard ClaudeAccessPolicy.canRunCLI() else { return false }
         guard let cli = ClaudeCLI.locate() else {
             log.notice("claude doctor refresh: CLI not found")
             return false

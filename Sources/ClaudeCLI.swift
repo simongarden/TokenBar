@@ -35,24 +35,85 @@ struct ClaudeCLI: Sendable {
         return nil
     }
 
-    /// Empty directory used as the working directory: `doctor` reads settings files in its
-    /// current directory, so it must not run inside some project.
-    static func neutralDirectory() -> URL {
-        let d = FileManager.default.temporaryDirectory.appending(path: "TokenBar-claude-cli", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d
+    /// A fresh private directory for each run. No reusable path or project configuration is trusted.
+    static func neutralDirectory(base: URL = FileManager.default.temporaryDirectory) throws -> URL {
+        var template = Array(base.appending(path: "TokenBar-claude-XXXXXX").path.utf8CString)
+        guard let created = mkdtemp(&template) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let url = URL(fileURLWithPath: String(cString: created), isDirectory: true)
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
-    /// The inherited environment without Claude Code / Anthropic variables, so the CLI uses its
-    /// own login (the Keychain item) and not some session's host-provided auth.
+    /// Allow only identity, locale, temporary directory and absolute executable search paths.
+    /// This also drops inherited interpreter injection variables (NODE_OPTIONS, BUN_OPTIONS, DYLD_*).
     static func environment(from env: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-        env.filter { !$0.key.hasPrefix("CLAUDE") && !$0.key.hasPrefix("ANTHROPIC") }
+        let allowed: Set<String> = ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG"]
+        var clean = env.filter { allowed.contains($0.key) || $0.key.hasPrefix("LC_") }
+        let paths = (env["PATH"] ?? "").split(separator: ":").map(String.init).filter { $0.hasPrefix("/") }
+        clean["PATH"] = paths.isEmpty ? "/usr/bin:/bin:/usr/sbin:/sbin" : paths.joined(separator: ":")
+        return clean
     }
 
-    /// Runs `claude doctor` with no input/output. Returns its exit status, or nil if it could not be
-    /// started, was killed, or did not finish within `timeout`.
-    func runDoctor(timeout: TimeInterval = 60, workingDirectory: URL = ClaudeCLI.neutralDirectory()) async -> Int32? {
-        await run(["doctor"], timeout: timeout, workingDirectory: workingDirectory)
+    // Global settings/MCP flags: https://code.claude.com/docs/en/cli-reference
+    static let doctorArguments = [
+        "--setting-sources", "",
+        "--settings", #"{"disableAllHooks":true,"remoteControlAtStartup":false}"#,
+        "--strict-mcp-config", "doctor",
+    ]
+
+    /// A user-initiated login window. The CLI owns its browser login and credential writes;
+    /// TokenBar never captures the login URL, authorization code or credential output.
+    func loginCommandFile(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> URL {
+        let directory = try Self.neutralDirectory()
+        let command = directory.appending(path: "Claude-Login.command")
+        let clean = Self.environment(from: environment)
+        let assignments = clean.keys.sorted().map { Self.shellQuote("\($0)=\(clean[$0]!)") }
+        let arguments = Self.doctorArguments.dropLast() + ["auth", "login"]
+        let invocation = (["/usr/bin/env", "-i"] + assignments + [Self.shellQuote(executable.path)]
+            + arguments.map(Self.shellQuote)).joined(separator: " ")
+        let script = """
+        #!/bin/zsh
+        trap \(Self.shellQuote("/bin/rm -f -- " + Self.shellQuote(command.path) + "; /bin/rmdir -- " + Self.shellQuote(directory.path))) EXIT
+        cd \(Self.shellQuote(directory.path)) || exit 1
+        printf '%s\\n' '請依 Claude 的畫面指示登入；完成後回到 AI Token Status 按「完成登入，重新連接」。'
+        \(invocation)
+        login_result=$?
+        if [[ $login_result -eq 0 ]]; then
+          printf '%s\\n' '登入完成。請回到 AI Token Status 確認連線。'
+        else
+          printf '%s\\n' '登入尚未完成。你可以關閉這個視窗，回到 App 再試一次。'
+        fi
+        exit "$login_result"
+        """
+        do {
+            try Data(script.utf8).write(to: command)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: command.path)
+            return command
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    /// An explicit fixture directory is supported for tests. Production callers always get a
+    /// private directory, cleaned up after exit/failure/timeout; unsupported isolation flags fail closed.
+    func runDoctor(timeout: TimeInterval = 60, workingDirectory: URL? = nil) async -> Int32? {
+        let directory: URL
+        do { directory = try workingDirectory ?? Self.neutralDirectory() }
+        catch { return nil }
+        defer {
+            if workingDirectory == nil { try? FileManager.default.removeItem(at: directory) }
+        }
+        return await run(Self.doctorArguments, timeout: timeout, workingDirectory: directory)
     }
 
     func run(_ arguments: [String], timeout: TimeInterval, workingDirectory: URL) async -> Int32? {

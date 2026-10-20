@@ -60,11 +60,11 @@ import Testing
         #expect(code == 3)
         let lines = try String(contentsOf: cwd.appending(path: "out.txt"), encoding: .utf8).split(separator: "\n").map(String.init)
         let real = realpath(cwd.path, nil).map { defer { free($0) }; return String(cString: $0) } ?? cwd.path
-        #expect(lines == [real, "doctor", "0"])
+        #expect(lines == [real, ClaudeCLI.doctorArguments.joined(separator: " "), "0"])
     }
 
     @Test func timesOutAndReturnsNil() async throws {
-        let exe = try script("bin/claude", "sleep 30")
+        let exe = try script("bin/claude", "exec sleep 30")
         let start = Date()
         let code = await ClaudeCLI(executable: exe).runDoctor(timeout: 0.5, workingDirectory: home)
         #expect(code == nil)
@@ -74,5 +74,72 @@ import Testing
     @Test func missingExecutableReturnsNil() async {
         let code = await ClaudeCLI(executable: home.appending(path: "nope/claude")).runDoctor(timeout: 5, workingDirectory: home)
         #expect(code == nil)
+    }
+}
+
+@Suite struct ClaudeCLIIsolationTests {
+    @Test func privateDirectoriesAreUniqueAndOwnerOnly() throws {
+        let a = try ClaudeCLI.neutralDirectory(); let b = try ClaudeCLI.neutralDirectory()
+        defer { try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
+        #expect(a != b)
+        for url in [a, b] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+            #expect((attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid())
+        }
+    }
+
+    @Test func environmentDropsInjectionAndRelativeSearchPaths() {
+        let result = ClaudeCLI.environment(from: ["HOME": "/fixture", "PATH": ".:tools:/usr/bin:../bin:/opt/homebrew/bin",
+            "NODE_OPTIONS": "--require=malicious.js", "BUN_OPTIONS": "bad", "DYLD_INSERT_LIBRARIES": "bad",
+            "ANTHROPIC_AUTH_TOKEN": "fixture", "CLAUDE_CONFIG_DIR": "/bad", "LC_ALL": "C", "GIT_CONFIG_GLOBAL": "/bad"])
+        #expect(result == ["HOME": "/fixture", "PATH": "/usr/bin:/opt/homebrew/bin", "LC_ALL": "C"])
+    }
+
+    @Test func productionDoctorDirectoryIsRemovedAfterExit() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appending(path: "TokenBarDoctorFixture-\(UUID().uuidString)")
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let output = root.appending(path: "cwd.txt")
+        let executable = root.appending(path: "claude")
+        // The synthetic executable records its private working directory, never launching real Claude.
+        let script = "#!/bin/sh\npwd -P > '\(output.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: executable)
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        #expect(await ClaudeCLI(executable: executable).runDoctor(timeout: 5) == 0)
+        let cwd = try String(contentsOf: output, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!fm.fileExists(atPath: cwd))
+        #expect(cwd.contains("TokenBar-claude-"))
+    }
+}
+
+@Suite struct ClaudeLoginCommandTests {
+    @Test func loginWindowRunsOnlyOwnerLoginWithPrivateFilesAndCleanup() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appending(path: "TokenBarLoginTest-\(UUID().uuidString)")
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let output = root.appending(path: "arguments.txt")
+        let executable = root.appending(path: "claude' fixture")
+        let body = "#!/bin/sh\nprintf '%s\\n' \"$@\" > '\(output.path)'\nexit 0\n"
+        try Data(body.utf8).write(to: executable)
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let command = try ClaudeCLI(executable: executable).loginCommandFile(environment: [
+            "HOME": root.path, "PATH": "/usr/bin:/bin", "NODE_OPTIONS": "must-not-inherit", "ANTHROPIC_API_KEY": "fixture-only"])
+        defer { try? fm.removeItem(at: command.deletingLastPathComponent()) }
+        let attributes = try fm.attributesOfItem(atPath: command.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        let script = try String(contentsOf: command, encoding: .utf8)
+        #expect(!script.contains("must-not-inherit"))
+        #expect(!script.contains("fixture-only"))
+        let result = await ClaudeCLI(executable: URL(fileURLWithPath: "/bin/zsh"))
+            .run([command.path], timeout: 5, workingDirectory: root)
+        #expect(result == 0)
+        let arguments = try String(contentsOf: output, encoding: .utf8)
+        #expect(arguments.hasSuffix("auth\nlogin\n"))
+        #expect(arguments.contains("--strict-mcp-config"))
+        #expect(!arguments.contains("doctor"))
+        #expect(!fm.fileExists(atPath: command.deletingLastPathComponent().path))
     }
 }

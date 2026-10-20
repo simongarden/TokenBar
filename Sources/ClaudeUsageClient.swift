@@ -1,18 +1,53 @@
 import Foundation
+import Darwin
 import LocalAuthentication
 import Security
 import os
 
 private let clog = Logger(subsystem: "com.okmaster.TokenBar", category: "claude-api")
 
-/// Claude Code's login Keychain item. Shared by the API client (background, never prompts)
-/// and onboarding/settings (explicit "authorize" button, may prompt).
+/// Old API/CLI preferences are not evidence of informed consent to these capabilities.
+/// UserDefaults is a UX authorization boundary, not protection from malicious same-user code.
+enum ClaudeAccessPolicy {
+    static func canReadCredentials(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: SettingsKey.claudeCredentialConsent)
+            && defaults.bool(forKey: SettingsKey.claudeOAuth)
+    }
+
+    static func canRunCLI(in defaults: UserDefaults = .standard) -> Bool {
+        canReadCredentials(in: defaults) && defaults.bool(forKey: SettingsKey.claudeCLIConsent)
+    }
+
+    static func grantCredentialRead(in defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: SettingsKey.claudeCredentialConsent)
+        defaults.set(true, forKey: SettingsKey.claudeOAuth)
+    }
+
+    static func revoke(in defaults: UserDefaults = .standard) {
+        defaults.set(false, forKey: SettingsKey.claudeOAuth)
+        defaults.set(false, forKey: SettingsKey.claudeCredentialConsent)
+        defaults.set(false, forKey: SettingsKey.claudeCLIConsent)
+        defaults.removeObject(forKey: ClaudeUsageClient.savedKey)
+    }
+}
+
+/// Claude Code's login item: background reads require consent and may never prompt.
 enum ClaudeKeychain {
     static let service = "Claude Code-credentials"
+    // Resolve the legacy UI-fail constant without using a deprecated declaration. Some
+    // Keychain paths need this in addition to LAContext.interactionNotAllowed.
+    private static let noUIFailurePolicy: String? = {
+        guard let handle = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY) else { return nil }
+        defer { dlclose(handle) }
+        guard let symbol = dlsym(handle, "kSecUseAuthenticationUIFail"),
+              let value = symbol.assumingMemoryBound(to: CFString?.self).pointee else { return nil }
+        return value as String
+    }()
 
     /// `allowUI: false` never shows the macOS access prompt: an item the app isn't
     /// "Always Allow"-ed for returns errSecInteractionNotAllowed instead.
     static func copyData(allowUI: Bool) -> (OSStatus, Data?) {
+        guard allowUI || ClaudeAccessPolicy.canReadCredentials() else { return (errSecAuthFailed, nil) }
         var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service,
                                 kSecReturnData as String: true,
@@ -20,6 +55,8 @@ enum ClaudeKeychain {
         if !allowUI {
             let ctx = LAContext(); ctx.interactionNotAllowed = true
             q[kSecUseAuthenticationContext as String] = ctx
+            guard let policy = noUIFailurePolicy else { return (errSecInteractionNotAllowed, nil) }
+            q[kSecUseAuthenticationUI as String] = policy as CFString
         }
         var out: CFTypeRef?
         let st = SecItemCopyMatching(q as CFDictionary, &out)
@@ -30,7 +67,7 @@ enum ClaudeKeychain {
     static func parseToken(_ data: Data) -> (token: String, expiresAt: Date?)? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = obj["claudeAiOauth"] as? [String: Any],
-              let t = oauth["accessToken"] as? String else { return nil }
+              let t = oauth["accessToken"] as? String, !t.isEmpty else { return nil }
         let exp = (oauth["expiresAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
         return (t, exp)
     }
@@ -45,6 +82,7 @@ enum ClaudeKeychain {
 
     /// Background read: never prompts.
     static func readToken() -> Result<(String, Date?), ClaudeUsageClient.Status> {
+        guard ClaudeAccessPolicy.canReadCredentials() else { return .failure(.consentRequired) }
         let (st, data) = copyData(allowUI: false)
         if st != errSecSuccess {
             clog.notice("keychain read OSStatus=\(st, privacy: .public)")
@@ -63,7 +101,7 @@ enum ClaudeKeychain {
 /// then re-reads the Keychain; TokenBar never writes the credential itself.
 actor ClaudeUsageClient {
     enum Status: Error, Sendable, Equatable {
-        case ok, noCredential, denied, expired, httpError(Int), failed
+        case ok, consentRequired, noCredential, denied, expired, httpError(Int), failed
         case waiting(Date)   // backing off until date
     }
 
@@ -84,6 +122,8 @@ actor ClaudeUsageClient {
     private let readToken: TokenReader
     private let transport: Transport
     private let refreshCredential: CredentialRefresher?
+    private let hasConsent: @Sendable () -> Bool
+    private var credentialGeneration = 0
 
     private var token: String?
     private var expiresAt: Date?
@@ -96,11 +136,13 @@ actor ClaudeUsageClient {
     init(defaultsSuite: String? = nil,
          readToken: @escaping TokenReader = { ClaudeKeychain.readToken() },
          transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
-         refreshCredential: CredentialRefresher? = nil) {
+         refreshCredential: CredentialRefresher? = nil,
+         hasConsent: @escaping @Sendable () -> Bool = { ClaudeAccessPolicy.canReadCredentials() }) {
         self.defaults = defaultsSuite.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.readToken = readToken
         self.transport = transport
         self.refreshCredential = refreshCredential
+        self.hasConsent = hasConsent
     }
 
     private var nextAllowed: Date {
@@ -142,22 +184,35 @@ actor ClaudeUsageClient {
     /// Credentials may have changed (re-authorized / toggled): drop the in-memory token and
     /// allow an immediate retry if the last attempt failed on credentials.
     func credentialsChanged() {
-        token = nil; expiresAt = nil
+        credentialGeneration += 1
+        token = nil; expiresAt = nil; cached = nil
+        defaults.removeObject(forKey: Self.savedKey)
         switch lastStatus {
-        case .denied?, .noCredential?, .expired?: nextAllowed = .distantPast
+        case .consentRequired?, .denied?, .noCredential?, .expired?, .httpError(401)?: nextAllowed = .distantPast
         default: break
         }
     }
 
     /// Returns the last result without calling the API unless the throttle window has passed.
     /// While throttled the last attempt's status is kept (an error is not masked by the disk cache).
-    func fetch(now: Date = Date()) async -> (RateInfo?, Status) {
+    func fetch(now: Date = Date(), allowAutomaticRefresh: Bool = true) async -> (RateInfo?, Status) {
+        guard hasConsent() else { return denyConsent() }
+        let generation = credentialGeneration
         if !didLoadSaved {
             // Launch only: show the last good result until the first real attempt.
             didLoadSaved = true
             if let saved = loadSaved(now: now) { cached = saved; lastStatus = .ok }
         }
         if now < nextAllowed {
+            if var rate = cached {
+                for key in [\RateInfo.primary, \RateInfo.secondary] {
+                    if let reset = rate[keyPath: key]?.resetsAt, reset <= now {
+                        rate[keyPath: key]?.usedPercent = 0
+                        rate[keyPath: key]?.resetsAt = nil
+                    }
+                }
+                cached = rate
+            }
             return (cached, lastStatus ?? .waiting(nextAllowed))
         }
         if token == nil || (expiresAt.map { $0 < now } ?? false) {
@@ -169,10 +224,13 @@ actor ClaudeUsageClient {
         if let e = expiresAt, e < now {
             // Never call with an expired token; let Claude Code refresh it, then re-read.
             token = nil
-            guard await refreshViaCLI(now: now), case .success(let t) = readToken(), t.1.map({ $0 > now }) ?? true else {
+            let didRefresh = allowAutomaticRefresh ? await refreshViaCLI(now: now) : false
+            guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
+            guard didRefresh, case .success(let t) = readToken(), t.1.map({ $0 > now }) ?? true else {
                 clog.notice("token expired at \(e.formatted(), privacy: .public); skipping call")
                 return fail(.expired, now: now)
             }
+            guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
             clog.notice("token refreshed by Claude Code CLI")
             token = t.0; expiresAt = t.1
         }
@@ -187,6 +245,7 @@ actor ClaudeUsageClient {
         req.timeoutInterval = 15
         do {
             let (data, resp) = try await transport(req)
+            guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
             let http = resp as? HTTPURLResponse
             let code = http?.statusCode ?? 0
             clog.notice("GET /api/oauth/usage -> \(code, privacy: .public)")
@@ -196,6 +255,7 @@ actor ClaudeUsageClient {
                 let wait = retry ?? backoffMinutes * 60
                 nextAllowed = now.addingTimeInterval(wait)
                 clog.notice("429: next attempt at \(self.nextAllowed.formatted(date: .omitted, time: .standard), privacy: .public) (retry-after: \(retry.map { "\(Int($0))s" } ?? "none", privacy: .public))")
+                defaults.removeObject(forKey: Self.savedKey)
                 cached = nil; lastStatus = .waiting(nextAllowed)
                 return (nil, .waiting(nextAllowed))
             }
@@ -223,8 +283,17 @@ actor ClaudeUsageClient {
             save(info, now: now)
             return (info, .ok)
         } catch {
+            guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
             return fail(.failed, now: now)
         }
+    }
+
+    private func denyConsent() -> (RateInfo?, Status) {
+        credentialGeneration += 1
+        token = nil; expiresAt = nil; cached = nil
+        defaults.removeObject(forKey: Self.savedKey)
+        lastStatus = .consentRequired
+        return (nil, .consentRequired)
     }
 
     /// Runs the refresher unless it ran within `cliRefreshInterval`; true if it ran.
@@ -237,6 +306,7 @@ actor ClaudeUsageClient {
     /// Error: clear the shown result and retry after the normal interval.
     private func fail(_ s: Status, now: Date) -> (RateInfo?, Status) {
         nextAllowed = now.addingTimeInterval(successInterval)
+        defaults.removeObject(forKey: Self.savedKey)
         cached = nil; lastStatus = s
         return (nil, s)
     }
