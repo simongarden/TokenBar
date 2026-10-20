@@ -9,10 +9,10 @@
 /* Begin PBXBuildFile section */
 		04DF9975D8147EEAA30A08ED /* ClaudeConnectionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69C9258308978D18E08AC7C /* ClaudeConnectionPresentation.swift */; };
 		07B816E87086716094B1D416 /* ActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E0A7502202AD1400E33BC7 /* ActivityMonitor.swift */; };
-		0C3B55A5C005D8104D76FCEF /* SKIRR_LogoAnimation_v4.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 61F861A124255BFDE4EDB83B /* SKIRR_LogoAnimation_v4.mp4 */; };
 		0E696B80C3124F20FADFF0D5 /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 955A7AB77F0D4F06EBA41C29 /* Updater.swift */; };
 		0FD9796CF7110921309BC9F5 /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */; };
 		1D6F4DC7256DACAE2F9B89FA /* ClaudeCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AD7922061207F4291BAFF7 /* ClaudeCLI.swift */; };
+		4C70397C1C6FA17B2955D01D /* SKIRR_Logo_animated_v5.svg in Resources */ = {isa = PBXBuildFile; fileRef = 1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */; };
 		58E7DF1CE0902326DBCA153A /* Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05DEFD054E58ACC4ADC34B2E /* Onboarding.swift */; };
 		5F670BF04618183C06C3A14E /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */; };
 		6B3C0F855DDE2649A788A8C4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F17CD4C3734E741CC42A6BC /* ContentView.swift */; };
@@ -24,6 +24,7 @@
 		98B06D5C5E298DB6D9CF7FC4 /* SKIRRBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */; };
 		9BA83DC8C46C80BF2B09100D /* ClaudeConnectionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69C9258308978D18E08AC7C /* ClaudeConnectionPresentation.swift */; };
 		A3E994CCE773ECB7166BC99A /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D1C9395E574E74ADBC20E7 /* ClaudeUsageClient.swift */; };
+		B71F35872E77BD8620A49E41 /* SKIRRLogoAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */; };
 		BCD80BA3ECFFE393FF8E3CD2 /* ClaudeCLITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89272480CE2B4D0FC804D649 /* ClaudeCLITests.swift */; };
 		C4EC41B2D29D61C30409AFA2 /* RecentFileWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */; };
 		D519B1309E3B0B512E165534 /* TokenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1442C131BC37E3A1600A846 /* TokenBarApp.swift */; };
@@ -41,12 +42,13 @@
 		05DEFD054E58ACC4ADC34B2E /* Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding.swift; sourceTree = "<group>"; };
 		14AD7922061207F4291BAFF7 /* ClaudeCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCLI.swift; sourceTree = "<group>"; };
 		1A7E5782CCEC2CE49CDF0028 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */ = {isa = PBXFileReference; path = SKIRR_Logo_animated_v5.svg; sourceTree = "<group>"; };
 		20507F38CDE9D9343D15C6BC /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
 		30BB96A5C787F3FCAEE5C0FC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClientTests.swift; sourceTree = "<group>"; };
 		4D9450B085FA6A58C263174B /* ClaudeConnectionPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConnectionPanel.swift; sourceTree = "<group>"; };
 		532A4EEBFC713AB103C606F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		61F861A124255BFDE4EDB83B /* SKIRR_LogoAnimation_v4.mp4 */ = {isa = PBXFileReference; path = SKIRR_LogoAnimation_v4.mp4; sourceTree = "<group>"; };
+		66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SKIRRLogoAnimation.swift; sourceTree = "<group>"; };
 		66D1C9395E574E74ADBC20E7 /* ClaudeUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClient.swift; sourceTree = "<group>"; };
 		7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SKIRRBrand.swift; sourceTree = "<group>"; };
 		7D074ABC3B3534CDF9EC6D85 /* OKMSkirrTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OKMSkirrTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -92,6 +94,7 @@
 				05DEFD054E58ACC4ADC34B2E /* Onboarding.swift */,
 				8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */,
 				7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */,
+				66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */,
 				E1442C131BC37E3A1600A846 /* TokenBarApp.swift */,
 				955A7AB77F0D4F06EBA41C29 /* Updater.swift */,
 				20507F38CDE9D9343D15C6BC /* UsageScanner.swift */,
@@ -103,7 +106,7 @@
 		4B08DB07EBEDB65879A9E86B /* BrandAssets */ = {
 			isa = PBXGroup;
 			children = (
-				61F861A124255BFDE4EDB83B /* SKIRR_LogoAnimation_v4.mp4 */,
+				1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */,
 			);
 			path = BrandAssets;
 			sourceTree = "<group>";
@@ -234,7 +237,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DD9FA70697FCDB62F9830554 /* Assets.xcassets in Resources */,
-				0C3B55A5C005D8104D76FCEF /* SKIRR_LogoAnimation_v4.mp4 in Resources */,
+				4C70397C1C6FA17B2955D01D /* SKIRR_Logo_animated_v5.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -255,6 +258,7 @@
 				58E7DF1CE0902326DBCA153A /* Onboarding.swift in Sources */,
 				0FD9796CF7110921309BC9F5 /* RecentFileWatcher.swift in Sources */,
 				98B06D5C5E298DB6D9CF7FC4 /* SKIRRBrand.swift in Sources */,
+				B71F35872E77BD8620A49E41 /* SKIRRLogoAnimation.swift in Sources */,
 				D519B1309E3B0B512E165534 /* TokenBarApp.swift in Sources */,
 				0E696B80C3124F20FADFF0D5 /* Updater.swift in Sources */,
 				E503BD2B08F13A33DC394F84 /* UsageScanner.swift in Sources */,
@@ -339,7 +343,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -353,7 +357,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
@@ -404,7 +408,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -424,7 +428,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

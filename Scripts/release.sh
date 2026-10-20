@@ -106,6 +106,8 @@ app="$out/OKM-Skirr.app"; ditto build/DD/Build/Products/Release/OKM-Skirr.app "$
 sparkle_bin=build/DD/SourcePackages/artifacts/sparkle/Sparkle/bin
 [[ -x $sparkle_bin/sign_update && -x $sparkle_bin/generate_keys ]] || die "找不到 Sparkle 工具（$sparkle_bin）"
 plist() { /usr/libexec/PlistBuddy -c "Print $1" "$app/Contents/Info.plist"; }
+icon_file=$(plist CFBundleIconFile 2>/dev/null || true)
+[[ -n $icon_file && -s "$app/Contents/Resources/${icon_file%.icns}.icns" ]] || die "App Icon 未封裝，拒絕發行。"
 [[ $(plist CFBundleShortVersionString) == $version && $(plist CFBundleVersion) == $build ]] || die "App 版本不符"
 identity=$(security find-identity -v -p codesigning | sed -nE "s/.*\"(Developer ID Application: .*\($team\))\"/\1/p" | head -1)
 [[ -n $identity ]] || die "鑰匙圈中找不到 Developer ID Application 憑證（team ${team}）"

@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 import AppKit
 
 enum SKIRRBrand {
@@ -21,8 +20,9 @@ struct SKIRRHeader: View {
             ZStack {
                 Image("SKIRRLogo").resizable().scaledToFit()
                 if animate && !reduceMotion && !isSnapshot,
-                   let url = Bundle.main.url(forResource: "SKIRR_LogoAnimation_v4", withExtension: "mp4") {
-                    SKIRRLogoPlayer(url: url)
+                   let url = Bundle.main.url(forResource: "SKIRR_Logo_animated_v5", withExtension: "svg"),
+                   let svg = try? String(contentsOf: url, encoding: .utf8) {
+                    SKIRRLogoAnimation(svg: svg)
                 }
             }
             .frame(width: 112, height: 112).clipShape(.circle)
@@ -38,44 +38,6 @@ struct SKIRRHeader: View {
         .frame(maxWidth: .infinity).padding(.vertical, 26)
         .background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 22))
     }
-}
-
-/// A local, muted, one-shot logo. The last video frame remains visible until the window closes.
-struct SKIRRLogoPlayer: NSViewRepresentable {
-    let url: URL
-    func makeNSView(context: Context) -> LogoVideoView { LogoVideoView(url: url) }
-    func updateNSView(_ nsView: LogoVideoView, context: Context) {}
-    static func dismantleNSView(_ nsView: LogoVideoView, coordinator: ()) { nsView.stop() }
-}
-
-final class LogoVideoView: NSView {
-    private let player: AVPlayer
-    private let videoLayer = AVPlayerLayer()
-    private var started = false
-    init(url: URL) {
-        player = AVPlayer(url: url)
-        super.init(frame: .zero)
-        wantsLayer = true
-        player.isMuted = true
-        player.actionAtItemEnd = .pause
-        videoLayer.player = player
-        videoLayer.videoGravity = .resizeAspectFill
-        layer?.addSublayer(videoLayer)
-    }
-    required init?(coder: NSCoder) { nil }
-    override func layout() { super.layout(); videoLayer.frame = bounds }
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
-        if let window {
-            NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose),
-                                                  name: NSWindow.willCloseNotification, object: window)
-        }
-        if window != nil && !started { started = true; player.play() }
-        else if window == nil { player.pause() }
-    }
-    @objc private func windowWillClose() { player.pause() }
-    func stop() { NotificationCenter.default.removeObserver(self); player.pause(); videoLayer.player = nil; player.replaceCurrentItem(with: nil) }
 }
 
 /// Share the chosen appearance between settings, onboarding, and the popover.

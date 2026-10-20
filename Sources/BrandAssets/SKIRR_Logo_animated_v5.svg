@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+<title id="title">SKÍRR 動態標誌 v5</title><desc id="desc">圓點由大縮小落下彈跳，以移動遮罩揭露固定原形的白色雙分面，再反向揭露灰藍分面，灰藍色面完成後圓點左移停留，再右移看向另一側，最後回到中央。4.2 秒後回到原稿。</desc>
+<style>
+.motion { transform-box:view-box; transform-origin:512px 512px; animation-duration:4.2s; animation-fill-mode:both; animation-timing-function:linear; animation-iteration-count:1; }
+.pupil-drop { animation-name:pupil-drop; }
+.white-upper-mask { animation-name:white-upper-reveal; }
+.white-lower-mask { animation-name:white-lower-reveal; }
+.gray-upper-mask { animation-name:gray-upper-reveal; }
+.gray-lower-mask { animation-name:gray-lower-reveal; }
+.face,.face path { transform:none; }
+.pupil-gaze { animation-name:pupil-gaze; }
+@keyframes pupil-drop {
+  0% {opacity:0;transform:translateY(-620px) scale(3.2);}
+  1.428571% {opacity:1;transform:translateY(-620px) scale(3.2);animation-timing-function:cubic-bezier(.5,0,.95,.5);}
+  13.809524% {opacity:1;transform:translateY(0) scale(1.04,1.10);animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  15.714286% {opacity:1;transform:translateY(24px) scale(1.18,.82);animation-timing-function:cubic-bezier(.2,.8,.3,1);}
+  19.523810% {opacity:1;transform:translateY(-58px) scale(.96,1.06);animation-timing-function:cubic-bezier(.5,0,.95,.5);}
+  23.333333% {opacity:1;transform:translateY(0) scale(1.08,.94);animation-timing-function:cubic-bezier(.2,.8,.3,1);}
+  26.428571% {opacity:1;transform:translateY(-14px) scale(.99,1.02);animation-timing-function:cubic-bezier(.5,0,.95,.5);}
+  29.523810%,100% {opacity:1;transform:none;}
+}
+/* 只移動裁切矩形；四塊色面本身始終維持原路徑、位置與比例。 */
+@keyframes white-upper-reveal {
+  0%,30.476190% {transform:translateY(592px);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  48.809524%,100% {transform:translateY(209px);}
+}
+@keyframes white-lower-reveal {
+  0%,30.476190% {transform:translateY(-592px);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  48.809524%,100% {transform:translateY(-209px);}
+}
+@keyframes gray-upper-reveal {
+  0%,48.809524% {transform:translateY(-815px);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  66.666667%,100% {transform:translateY(-663px);}
+}
+@keyframes gray-lower-reveal {
+  0%,48.809524% {transform:translateY(815px);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  66.666667%,100% {transform:translateY(662px);}
+}
+@keyframes pupil-gaze {
+  0%,66.666667% {transform:translateX(0);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  72.142857%,79.047619% {transform:translateX(-70px);animation-timing-function:cubic-bezier(.45,0,.25,1);}
+  88.571429%,92.380952% {transform:translateX(70px);animation-timing-function:cubic-bezier(.2,.7,.3,1);}
+  98.095238%,100% {transform:none;}
+}
+.animated-state { animation:animated-state 4.2s steps(1,end) both; }
+.final-state { animation:final-state 4.2s steps(1,end) both; }
+@keyframes animated-state { from {opacity:1;} to {opacity:0;} }
+@keyframes final-state { from {opacity:0;} to {opacity:1;} }
+@media (prefers-reduced-motion:reduce) {
+ .motion { animation:none;transform:none;opacity:1; }
+ .animated-state { display:none; }
+ .final-state { animation:none;opacity:1; }
+}
+</style>
+<defs>
+ <clipPath id="white-upper-reveal" clipPathUnits="userSpaceOnUse"><rect class="motion white-upper-mask" width="1024" height="1024"/></clipPath>
+ <clipPath id="white-lower-reveal" clipPathUnits="userSpaceOnUse"><rect class="motion white-lower-mask" width="1024" height="1024"/></clipPath>
+ <clipPath id="gray-upper-reveal" clipPathUnits="userSpaceOnUse"><rect class="motion gray-upper-mask" width="1024" height="1024"/></clipPath>
+ <clipPath id="gray-lower-reveal" clipPathUnits="userSpaceOnUse"><rect class="motion gray-lower-mask" width="1024" height="1024"/></clipPath>
+</defs>
+<g class="animated-state"><rect width="1024" height="1024" fill="#0b2c67"/>
+<g class="face white-lower" data-face="white-lower" clip-path="url(#white-lower-reveal)"><path d="M833.39,613.23l-169.03,169.03c-19.82,19.82-46.69,30.97-74.7,31l-167.81.19,169.27-169.27c58.41-58.41,58.45-153.06.1-211.41h167.55c28.02,0,54.89,11.13,74.7,30.93h0c41.27,41.27,41.24,108.21-.07,149.52Z" fill="#fff"/></g>
+<g class="face gray-lower" data-face="gray-lower" clip-path="url(#gray-lower-reveal)"><path d="M421.85,813.46c-19.82,0-38.82-7.85-52.83-21.85l-63.81-63.78c-23.54-23.53-6.85-63.8,26.45-63.82l239.75-.11-149.56,149.56Z" fill="#8391ae"/></g>
+<g class="face white-upper" data-face="white-upper" clip-path="url(#white-upper-reveal)"><path d="M190.61,410.77l169.03-169.03c19.82-19.82,46.69-30.97,74.7-31l167.81-.19-169.27,169.27c-58.41,58.41-58.45,153.06-.1,211.41h0s-167.55,0-167.55,0c-28.02,0-54.89-11.13-74.7-30.93h0c-41.27-41.27-41.24-108.21.07-149.52Z" fill="#fff"/></g>
+<g class="face gray-upper" data-face="gray-upper" clip-path="url(#gray-upper-reveal)"><path d="M602.15,210.54c19.82,0,38.82,7.85,52.83,21.85l63.81,63.78c23.54,23.53,6.85,63.8-26.45,63.82l-239.75.11,149.56-149.56Z" fill="#8391ae"/></g>
+<g class="motion pupil-drop"><g class="motion pupil-gaze"><ellipse cx="512" cy="512" rx="49.85" ry="49.81" transform="translate(-212.08 512) rotate(-45)" fill="#8391ae"/></g></g></g>
+<g class="final-state"><svg id="_圖層_1" data-name="圖層 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+      }
+
+      .cls-2 {
+        fill: #0b2c67;
+      }
+
+      .cls-3 {
+        fill: #fff;
+      }
+
+      .cls-4 {
+        fill: #8391ae;
+      }
+    </style>
+  </defs>
+  <rect class="cls-2" width="1024" height="1024"/>
+  <g>
+    <circle class="cls-2" cx="512" cy="512" r="512"/>
+    <circle class="cls-1" cx="512" cy="512" r="352.39"/>
+    <g>
+      <path class="cls-3" d="M833.39,613.23l-169.03,169.03c-19.82,19.82-46.69,30.97-74.7,31l-167.81.19,169.27-169.27c58.41-58.41,58.45-153.06.1-211.41h167.55c28.02,0,54.89,11.13,74.7,30.93h0c41.27,41.27,41.24,108.21-.07,149.52Z"/>
+      <path class="cls-4" d="M421.85,813.46c-19.82,0-38.82-7.85-52.83-21.85l-63.81-63.78c-23.54-23.53-6.85-63.8,26.45-63.82l239.75-.11-149.56,149.56Z"/>
+      <path class="cls-3" d="M190.61,410.77l169.03-169.03c19.82-19.82,46.69-30.97,74.7-31l167.81-.19-169.27,169.27c-58.41,58.41-58.45,153.06-.1,211.41h0s-167.55,0-167.55,0c-28.02,0-54.89-11.13-74.7-30.93h0c-41.27-41.27-41.24-108.21.07-149.52Z"/>
+      <path class="cls-4" d="M602.15,210.54c19.82,0,38.82,7.85,52.83,21.85l63.81,63.78c23.54,23.53,6.85,63.8-26.45,63.82l-239.75.11,149.56-149.56Z"/>
+      <ellipse class="cls-4" cx="512" cy="512" rx="49.85" ry="49.81" transform="translate(-212.08 512) rotate(-45)"/>
+    </g>
+  </g>
+</svg></g></svg>
