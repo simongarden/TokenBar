@@ -21,6 +21,7 @@
 		875D4F6B68252CBBFD5433FE /* UsageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20507F38CDE9D9343D15C6BC /* UsageScanner.swift */; };
 		893F3F25087A53809516990F /* ClaudeAccessPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6E0AC88C5374D9C9EFDD1C /* ClaudeAccessPolicyTests.swift */; };
 		8A659DF8871F7511CE6E6B9C /* ClaudeConnectionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9450B085FA6A58C263174B /* ClaudeConnectionPanel.swift */; };
+		8D7AA09CCDD0FEDFD07AF637 /* PlanNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0348160007A1D478464A6CD2 /* PlanNameTests.swift */; };
 		8E0E62BBA47628D349C2DFEA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 150C07DDBA8E380CD102256B /* Sparkle */; };
 		8F03D373596A0D7977962840 /* StatusImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28258564184D5C393E8E8685 /* StatusImageRenderer.swift */; };
 		98B06D5C5E298DB6D9CF7FC4 /* SKIRRBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */; };
@@ -42,6 +43,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0348160007A1D478464A6CD2 /* PlanNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanNameTests.swift; sourceTree = "<group>"; };
 		05DEFD054E58ACC4ADC34B2E /* Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding.swift; sourceTree = "<group>"; };
 		14AD7922061207F4291BAFF7 /* ClaudeCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCLI.swift; sourceTree = "<group>"; };
 		1A7E5782CCEC2CE49CDF0028 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 				89272480CE2B4D0FC804D649 /* ClaudeCLITests.swift */,
 				829B4E9FC2EBA325EA69B423 /* ClaudeConnectionPresentationTests.swift */,
 				3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */,
+				0348160007A1D478464A6CD2 /* PlanNameTests.swift */,
 				C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */,
 				C8CB87C6B06E09D2C15E5122 /* StatusImageRendererTests.swift */,
 				D7D685C250D845408DCD1D0C /* UsageScannerTests.swift */,
@@ -285,6 +288,7 @@
 				D8C90157BDFB8FFFE3153C64 /* ClaudeUsageClient.swift in Sources */,
 				EE96EA3A3DC48074921578D9 /* ClaudeUsageClientTests.swift in Sources */,
 				DF9B616B7FC566CCC5F40D05 /* Models.swift in Sources */,
+				8D7AA09CCDD0FEDFD07AF637 /* PlanNameTests.swift in Sources */,
 				5F670BF04618183C06C3A14E /* RecentFileWatcher.swift in Sources */,
 				C4EC41B2D29D61C30409AFA2 /* RecentFileWatcherTests.swift in Sources */,
 				2DFB5D178B2F8266A6F1C73D /* StatusImageRenderer.swift in Sources */,

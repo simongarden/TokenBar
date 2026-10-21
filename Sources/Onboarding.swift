@@ -65,18 +65,23 @@ struct ProviderInfo: Sendable, Identifiable {
 }
 
 enum ProviderDetector {
-    static func detect() -> [ProviderInfo] {
+    /// `livePlans`: plan names already read by the scanner (service rawValue → display name), preferred
+    /// over the id_token copy, which can be stale.
+    static func detect(livePlans: [String: String] = [:]) -> [ProviderInfo] {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
         // Claude Code
-        var cEmail: String?
+        var cEmail: String?, cPlan: String?
         if let d = fm.contents(atPath: home + "/.claude.json"),
            let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-            cEmail = (o["oauthAccount"] as? [String: Any])?["emailAddress"] as? String
+            let oa = o["oauthAccount"] as? [String: Any]
+            cEmail = oa?["emailAddress"] as? String
+            cPlan = PlanName.claude(organizationType: oa?["organizationType"] as? String,
+                                    rateLimitTier: oa?["userRateLimitTier"] as? String)
         }
         let cDetected = cEmail != nil || fm.fileExists(atPath: home + "/.claude/projects")
         // Codex
-        var xEmail: String?
+        var xEmail: String?, xPlan: String?
         if let d = fm.contents(atPath: home + "/.codex/auth.json"),
            let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
            let jwt = (o["tokens"] as? [String: Any])?["id_token"] as? String {
@@ -86,6 +91,7 @@ enum ProviderDetector {
                 b += String(repeating: "=", count: (4 - b.count % 4) % 4)
                 if let pd = Data(base64Encoded: b), let p = try? JSONSerialization.jsonObject(with: pd) as? [String: Any] {
                     xEmail = p["email"] as? String
+                    xPlan = PlanName.codex((p["https://api.openai.com/auth"] as? [String: Any])?["chatgpt_plan_type"] as? String)
                 }
             }
         }
@@ -93,15 +99,15 @@ enum ProviderDetector {
         let gDetected = fm.fileExists(atPath: "/Applications/Grok Bot.app")
         return [
             ProviderInfo(id: "claude", name: "Claude", logo: "LogoClaudeColor", detected: cDetected,
-                         status: cDetected ? (cEmail.map { "已偵測到 · \($0)" } ?? "已偵測到本機記錄") : "未偵測到",
+                         status: cDetected ? PlanName.accountLine(cEmail, livePlans["claude"] ?? cPlan) : "未偵測到",
                          help: cDetected ? nil : "請先安裝 Claude Code 並登入 Claude 帳號。",
                          link: URL(string: "https://docs.anthropic.com/en/docs/claude-code")),
             ProviderInfo(id: "codex", name: "Codex", logo: "LogoCodexColor", detected: xDetected,
-                         status: xDetected ? (xEmail.map { "已偵測到 · \($0)" } ?? "已偵測到本機記錄") : "未偵測到",
+                         status: xDetected ? PlanName.accountLine(xEmail, livePlans["codex"] ?? xPlan) : "未偵測到",
                          help: xDetected ? nil : "請先安裝 Codex App 或 CLI 並登入。",
                          link: URL(string: "https://developers.openai.com/codex")),
             ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: gDetected,
-                         status: (gDetected ? "已偵測到 · " : "未偵測到 · ") + "僅顯示背景運作狀態，無用量數字",
+                         status: (gDetected ? "" : "未偵測到 · ") + "僅顯示背景運作狀態，無用量數字",
                          help: nil, link: nil),
         ]
     }
@@ -395,10 +401,13 @@ struct SettingsView: View {
     @State private var loginNote: String?
     @State private var confirmRepair = false
     @State private var autoUpdate = Updater.shared.automaticallyChecks
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     private let providers: [ProviderInfo]
     init(store: UsageStore? = nil, providers: [ProviderInfo]? = nil) {
         self.store = store
-        self.providers = providers ?? ProviderDetector.detect()
+        self.providers = providers ?? ProviderDetector.detect(livePlans: Dictionary(
+            (store?.summaries ?? []).compactMap { s in s.plan.map { (s.service.rawValue, $0) } },
+            uniquingKeysWith: { a, _ in a }))
     }
     @AppStorage("skirr.appearance") private var appearance = "system"
     @AppStorage("skirr.animateSettingsLogo") private var animateLogo = true
@@ -448,6 +457,17 @@ struct SettingsView: View {
 
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("一般").font(.headline)
+                Toggle(isOn: $launchAtLogin) { Text("登入時啟動").frame(maxWidth: .infinity, alignment: .leading) }
+                    .toggleStyle(.switch)
+                    .onChange(of: launchAtLogin) { _, on in
+                        do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                        catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                    }
+                    .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                    .padding(16).background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 18))
+            }
             VStack(alignment: .leading, spacing: 12) {
                 Text("外觀").font(.headline)
                 VStack(spacing: 14) {

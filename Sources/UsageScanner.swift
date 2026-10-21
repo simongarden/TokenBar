@@ -26,6 +26,7 @@ actor UsageScanner {
         var lastCodexTotal = -1
         var recent: [(Date, TokenBreakdown)] = []
         var latestRate: (Date, RateInfo)?
+        var latestPlan: (Date, String)?
     }
 
     private var states: [Service: [String: FileState]] = [:]
@@ -46,8 +47,15 @@ actor UsageScanner {
         // Disabled providers are not scanned at all.
         var c = enabled.contains(.claude) ? scanClaude() : ServiceSummary(service: .claude, available: false)
         var x = enabled.contains(.codex) ? scanCodex() : ServiceSummary(service: .codex, available: false)
-        if enabled.contains(.claude) { c.account = account(.claude) }
-        if enabled.contains(.codex) { x.account = account(.codex) }
+        if enabled.contains(.claude) {
+            let f = planFields(.claude)
+            c.plan = PlanName.claude(organizationType: f["type"], rateLimitTier: f["tier"])
+        }
+        if enabled.contains(.codex) {
+            // The server reports plan_type with every token_count; the id_token copy can be stale.
+            let live = (states[.codex] ?? [:]).values.compactMap(\.latestPlan).max { $0.0 < $1.0 }?.1
+            x.plan = PlanName.codex(live ?? planFields(.codex)["type"])
+        }
         prune()
         // Claude: Claude Code-style 5h block from local jsonl (may be overridden by API resets_at later)
         if let b = claudeBlock() {
@@ -105,20 +113,24 @@ actor UsageScanner {
         return (start, windowTokens(.claude, since: start))
     }
 
-    // MARK: - Logged-in account (read-only; only the email is extracted, tokens never stored or logged)
+    // MARK: - Subscription plan (read-only; only plan fields are extracted, tokens never stored or logged)
 
-    private var accountCache: [Service: (Date?, String?)] = [:]
+    private var planCache: [Service: (Date?, [String: String])] = [:]
 
-    private func account(_ svc: Service) -> String? {
+    /// Claude: `~/.claude.json` oauthAccount organizationType / userRateLimitTier.
+    /// Codex: `chatgpt_plan_type` from the `~/.codex/auth.json` id_token (fallback only).
+    private func planFields(_ svc: Service) -> [String: String] {
         let path = home.path + (svc == .claude ? "/.claude.json" : "/.codex/auth.json")
         let m = attrs(path).mtime
-        if let c = accountCache[svc], c.0 == m { return c.1 }
-        var email: String?
+        if let c = planCache[svc], c.0 == m { return c.1 }
+        var fields: [String: String] = [:]
         if let data = fm.contents(atPath: path),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             switch svc {
             case .claude:
-                email = (obj["oauthAccount"] as? [String: Any])?["emailAddress"] as? String
+                let oa = obj["oauthAccount"] as? [String: Any]
+                fields["type"] = oa?["organizationType"] as? String
+                fields["tier"] = oa?["userRateLimitTier"] as? String
             case .codex:
                 if let jwt = (obj["tokens"] as? [String: Any])?["id_token"] as? String {
                     let parts = jwt.split(separator: ".")
@@ -127,14 +139,14 @@ actor UsageScanner {
                         b += String(repeating: "=", count: (4 - b.count % 4) % 4)
                         if let pd = Data(base64Encoded: b),
                            let payload = try? JSONSerialization.jsonObject(with: pd) as? [String: Any] {
-                            email = payload["email"] as? String
+                            fields["type"] = (payload["https://api.openai.com/auth"] as? [String: Any])?["chatgpt_plan_type"] as? String
                         }
                     }
                 }
             }
         }
-        accountCache[svc] = (m, email)
-        return email
+        planCache[svc] = (m, fields)
+        return fields
     }
 
     private func codexWindow(_ any: Any?) -> RateWindow? {
@@ -314,6 +326,10 @@ actor UsageScanner {
                       let payload = obj["payload"] as? [String: Any],
                       payload["type"] as? String == "token_count",
                       let date0 = parseDate(obj["timestamp"] as? String) else { continue }
+                if let plan = (payload["rate_limits"] as? [String: Any])?["plan_type"] as? String, !plan.isEmpty,
+                   st.latestPlan == nil || st.latestPlan!.0 <= date0 {
+                    st.latestPlan = (date0, plan)
+                }
                 if let rl = payload["rate_limits"] as? [String: Any], let p = codexWindow(rl["primary"]),
                    st.latestRate == nil || st.latestRate!.0 <= date0 {
                     st.latestRate = (date0, RateInfo(primary: p, secondary: codexWindow(rl["secondary"]), isEstimate: false,

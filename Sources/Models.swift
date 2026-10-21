@@ -53,7 +53,8 @@ struct ServiceSummary: Sendable, Identifiable {
     var sourceNote: String = ""
     var fileCount = 0
     var rate: RateInfo?
-    var account: String?
+    /// Subscription plan for display (e.g. "Team 進階席位", "Max 5x", "Plus"); nil when unknown.
+    var plan: String?
     var periodTokens: Int?
     var periodStart: Date?
     var periodSource: String?
@@ -122,4 +123,45 @@ enum SettingsKey {
 func percentText(_ r: RateInfo?) -> String {
     guard let p = r?.primary?.usedPercent else { return "—" }
     return (r!.isEstimate ? "~" : "") + "\(Int(p.rounded()))%"
+}
+
+/// Display names for the subscription plan. The inputs are undocumented fields written by Claude Code /
+/// Codex, so anything unrecognized degrades to a plain capitalized name, or nil, never an error.
+enum PlanName {
+    /// Claude Code's `~/.claude.json` → `oauthAccount`. Claude Code itself treats
+    /// subscription "team" + rate-limit tier "default_claude_max_5x" as a Team premium seat
+    /// (`isTeamPremiumSubscriber`); `seatTier` is not used for that.
+    static func claude(organizationType: String?, rateLimitTier: String?) -> String? {
+        let type = organizationType?.lowercased().replacingOccurrences(of: "claude_", with: "")
+        let tier = rateLimitTier?.lowercased() ?? ""
+        let maxTier = tier.contains("max_20x") ? "Max 20x" : tier.contains("max_5x") ? "Max 5x" : nil
+        switch type {
+        case "team"?:
+            if rateLimitTier == nil { return "Team" }
+            return tier == "default_claude_max_5x" ? "Team 進階席位" : "Team 標準席位"
+        case "max"?: return maxTier ?? "Max"
+        case "pro"?: return "Pro"
+        case "enterprise"?: return "Enterprise"
+        case "free"?: return "Free"
+        case let t? where !t.isEmpty: return capitalized(t)
+        default: return maxTier
+        }
+    }
+
+    /// Codex `plan_type` (token_count rate_limits, or the id_token's `chatgpt_plan_type`).
+    static func codex(_ planType: String?) -> String? {
+        guard let p = planType?.lowercased(), !p.isEmpty else { return nil }
+        return ["plus": "Plus", "pro": "Pro", "team": "Team", "business": "Business", "enterprise": "Enterprise",
+                "edu": "Edu", "free": "Free", "go": "Go"][p] ?? capitalized(p)
+    }
+
+    /// Settings row subtitle: "<email> · <plan>", either part omitted when unknown.
+    static func accountLine(_ email: String?, _ plan: String?) -> String {
+        let parts = [email, plan].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? "本機已有使用記錄" : parts.joined(separator: " · ")
+    }
+
+    private static func capitalized(_ s: String) -> String {
+        s.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
 }

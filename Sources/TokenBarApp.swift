@@ -234,9 +234,9 @@ struct TokenBarApp: App {
             NSApp.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
             let providers = [
                 ProviderInfo(id: "claude", name: "Claude", logo: "LogoClaudeColor", detected: true,
-                             status: "已偵測到本機記錄", help: nil, link: nil),
+                             status: "user@example.com · Team 進階席位", help: nil, link: nil),
                 ProviderInfo(id: "codex", name: "Codex", logo: "LogoCodexColor", detected: true,
-                             status: "已偵測到本機記錄", help: nil, link: nil),
+                             status: "user@example.com · Team", help: nil, link: nil),
                 ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: true,
                              status: "僅顯示背景運作狀態，無用量數字", help: nil, link: nil)
             ]

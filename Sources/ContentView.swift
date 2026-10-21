@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 
 extension Service {
     var tint: Color {
@@ -12,7 +11,6 @@ extension Service {
 
 struct ContentView: View {
     let store: UsageStore
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -54,6 +52,15 @@ struct ContentView: View {
             Image("SKIRRMark").resizable().scaledToFit().frame(width: 28, height: 28).accessibilityHidden(true)
             Text("OKM SKÍRR").font(.headline).fixedSize()
             Spacer(minLength: 0)
+            Button {
+                Task { await store.refresh() }
+            } label: {
+                Image(systemName: "arrow.clockwise").font(.caption.weight(.semibold))
+                    .frame(width: 18, height: 18).contentShape(.rect)
+            }
+            .buttonStyle(.plain).foregroundStyle(.secondary)
+            .disabled(store.isRefreshing)
+            .help("數據更新").accessibilityLabel("數據更新")
             if let t = store.lastUpdated {
                 Text("更新於 \(t.formatted(date: .omitted, time: .standard))")
                     .font(.caption).foregroundStyle(.secondary)
@@ -63,34 +70,17 @@ struct ContentView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Toggle("登入時啟動", isOn: $launchAtLogin)
-                .toggleStyle(.switch).controlSize(.mini).font(.caption)
-                .onChange(of: launchAtLogin) { _, on in
-                    do {
-                        if on { try SMAppService.mainApp.register() }
-                        else { try SMAppService.mainApp.unregister() }
-                    } catch {
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
-                    }
-                }
-            Spacer()
             Button { WindowManager.shared.showSettings() } label: {
-                Image(systemName: "gearshape")
+                Label("設定", systemImage: "gearshape")
             }
-            .buttonStyle(.glass).help("設定")
-            Button {
-                Task { await store.refresh() }
-            } label: {
-                Label("數據更新", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.glass)
-            .disabled(store.isRefreshing)
+            .modifier(GlassButton())
+            Spacer()
             Button(role: .destructive) {
                 NSApplication.shared.terminate(nil)
             } label: {
                 Label("結束", systemImage: "power")
             }
-            .buttonStyle(.glass)
+            .modifier(GlassButton())
             .keyboardShortcut("q")
         }
         .controlSize(.small)
@@ -112,9 +102,8 @@ struct ServiceCard: View {
                 Text(summary.service.displayName).font(.subheadline.weight(.semibold))
                     .layoutPriority(1)
                 Spacer(minLength: 8)
-                if let a = summary.account {
-                    Text(a).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
+                if let plan = summary.plan {
+                    Text(plan).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             rateSection
