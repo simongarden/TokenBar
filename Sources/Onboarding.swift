@@ -191,15 +191,17 @@ private let klog = Logger(subsystem: "com.okmaster.TokenBar", category: "keychai
             NSApp.activate(); settings.makeKeyAndOrderFront(nil); return
         }
         settings = present(settings, title: "設定", view: AnyView(SettingsView(store: store)),
-                           size: NSSize(width: 620, height: 820))
+                           size: NSSize(width: 620, height: 820), extendsUnderTitlebar: false)
         settings?.styleMask.insert(.resizable)
         settings?.contentMinSize = NSSize(width: 560, height: 560)
     }
 
-    private func present(_ existing: NSWindow?, title: String, view: AnyView, size: NSSize = NSSize(width: 520, height: 440)) -> NSWindow {
+    private func present(_ existing: NSWindow?, title: String, view: AnyView, size: NSSize = NSSize(width: 520, height: 440), extendsUnderTitlebar: Bool = true) -> NSWindow {
         let w = existing ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
                                      styleMask: [.titled, .closable, .fullSizeContentView],
                                      backing: .buffered, defer: false)
+        if extendsUnderTitlebar { w.styleMask.insert(.fullSizeContentView) }
+        else { w.styleMask.remove(.fullSizeContentView) }
         w.title = title
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .visible
@@ -446,7 +448,6 @@ struct SettingsView: View {
 
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: 22) {
-            SKIRRHeader(animate: animateLogo, version: Self.version)
             VStack(alignment: .leading, spacing: 12) {
                 Text("外觀").font(.headline)
                 VStack(spacing: 14) {
@@ -512,13 +513,22 @@ struct SettingsView: View {
                 Button("重新設定…") { WindowManager.shared.showOnboarding() }.modifier(GlassButton())
             }
         }
-        .padding(28).padding(.top, 18)
+        .padding(.horizontal, 28)
+        .padding(.top, 18)
+        .padding(.bottom, 28)
     }
 
     var body: some View {
-        Group {
-            if isSnapshot { settingsContent }
-            else { ScrollView { settingsContent } }
+        VStack(spacing: 0) {
+            SKIRRHeader(animate: animateLogo, version: Self.version)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 28)
+                .padding(.top, 18)
+                .padding(.bottom, 14)
+            Divider().padding(.horizontal, 28)
+            ScrollView { settingsContent }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
