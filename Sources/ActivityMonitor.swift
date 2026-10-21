@@ -119,6 +119,7 @@ actor ActivityMonitor {
         switch name {
         case "claude": return (.claude, cpuThreshold)          // Claude Code CLI (desktop "Claude" ignored)
         case "codex": return (.codex, cpuThreshold)            // Codex CLI / app-server
+        case "grok": return (.grok, cpuThreshold)              // Grok Build CLI (Grok Bot.app is separate)
         case "node", "bun":
             let a = args(pid)
             if a.contains("@anthropic-ai/claude-code") { return (.claude, cpuThreshold) }

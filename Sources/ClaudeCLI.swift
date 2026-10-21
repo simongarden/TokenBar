@@ -100,7 +100,7 @@ struct ClaudeCLI: Sendable {
         }
     }
 
-    private static func shellQuote(_ value: String) -> String {
+    static func shellQuote(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 

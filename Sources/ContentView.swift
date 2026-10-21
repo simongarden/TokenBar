@@ -5,6 +5,7 @@ extension Service {
         switch self {
         case .claude: .orange
         case .codex: Color(.sRGB, red: 0x7A/255.0, green: 0x9D/255.0, blue: 1)   // Codex #7A9DFF
+        case .grok: Color(white: 0.55)
         }
     }
 }
@@ -33,6 +34,10 @@ struct ContentView: View {
             return ClaudeConnectionPresentation(enabled: Prefs.claudeAPI, status: store.claudeStatus,
                                                 needsLogin: store.claudeNeedsLogin).title
         case .codex: return "最近的 token_count 事件中沒有 rate_limits"
+        case .grok:
+            // The action row below already names the problem; avoid saying it twice.
+            if store.grokStatus == .usageUnknown { return GrokUsageClient.Status.usageUnknown.message }
+            return store.grokConnection.action == .none && !store.grokAwaitingLogin ? store.grokConnection.title : ""
         }
     }
 
@@ -42,7 +47,13 @@ struct ContentView: View {
                 ServiceCard(summary: summary, rateNote: rateNote(for: summary),
                     connection: summary.service == .claude ? ClaudeConnectionPresentation(
                         enabled: Prefs.claudeAPI, status: store.claudeStatus, needsLogin: store.claudeNeedsLogin) : nil,
-                    isConnecting: store.isConnectingClaude)
+                    isConnecting: store.isConnectingClaude,
+                    grok: summary.service == .grok ? store.grokConnection : nil, grokBusy: store.grokAwaitingLogin,
+                    grokAction: {
+                        // Installing explains itself first in Settings; signing in starts right away.
+                        if store.grokConnection.action == .install { WindowManager.shared.showSettings() }
+                        else { store.connectGrok() }
+                    })
             }
         }
     }
@@ -92,6 +103,9 @@ struct ServiceCard: View {
     let rateNote: String
     var connection: ClaudeConnectionPresentation? = nil
     var isConnecting = false
+    var grok: GrokConnectionPresentation? = nil
+    var grokBusy = false
+    var grokAction: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -113,6 +127,16 @@ struct ServiceCard: View {
                     Spacer()
                     Button(connection.actionTitle) { WindowManager.shared.showSettings() }
                         .modifier(GlassButton()).controlSize(.small).disabled(isConnecting)
+                }
+            }
+            if let grok, grok.action != .none || grokBusy {
+                HStack {
+                    Text(grokBusy ? "等待你完成 Grok 登入…" : grok.title).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if !grokBusy {
+                        Button(grok.actionTitle, action: grokAction)
+                            .modifier(GlassButton()).controlSize(.small)
+                    }
                 }
             }
             if let p = summary.periodTokens {
@@ -137,6 +161,10 @@ struct ServiceCard: View {
                 Text("已連接 Claude；尚無本機使用 Code 記錄")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if summary.service == .grok {
+                Text("尚無本機 Grok CLI 使用記錄。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if summary.service == .codex {
                 Text("尚無本機 Codex 使用記錄；目前僅支援 Codex 用量統計。")
                     .font(.caption).foregroundStyle(.secondary)
@@ -158,7 +186,7 @@ struct ServiceCard: View {
                 Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
             }
             return AnyShapeStyle(LinearGradient(colors: c, startPoint: .top, endPoint: .bottom))
-        case .claude:
+        case .claude, .grok:
             return AnyShapeStyle(summary.service.tint.gradient)
         }
     }
@@ -166,13 +194,22 @@ struct ServiceCard: View {
     @ViewBuilder private var rateSection: some View {
         if let r = summary.rate {
             VStack(alignment: .leading, spacing: 3) {
-                if let p = r.primary { windowRow(p, title: p.windowMinutes == 1440 ? "每日" : "5 小時", est: r.isEstimate) }
+                if let p = r.primary { windowRow(p, title: windowTitle(p.windowMinutes), est: r.isEstimate) }
                 if let w = r.secondary { windowRow(w, title: "每週", est: r.isEstimate) }
             }
-        } else if summary.service != .codex || summary.available {
+        } else if (summary.service != .codex || summary.available) && !rateNote.isEmpty {
             Label(connection?.detail ?? rateNote, systemImage: "gauge.with.dots.needle.0percent")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func windowTitle(_ minutes: Int?) -> String {
+        switch minutes ?? 300 {
+        case ..<1440: "5 小時"
+        case ..<(7 * 1440): "每日"
+        case ..<(28 * 1440): "每週"
+        default: "每月"
         }
     }
 

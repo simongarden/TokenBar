@@ -22,6 +22,8 @@ actor UsageScanner {
         var identity: FileIdentity?
         var claudeMessages: [ClaudeMessageKey: ClaudeRecord] = [:]
         var claudeUnkeyed: [ClaudeRecord] = []
+        var grokTurns: [String: ClaudeRecord] = [:]   // _meta.eventId → completed turn
+        var grokUnkeyed: [ClaudeRecord] = []
         var days: [DayKey: TokenBreakdown] = [:]
         var lastCodexTotal = -1
         var recent: [(Date, TokenBreakdown)] = []
@@ -38,15 +40,28 @@ actor UsageScanner {
         return f
     }()
     private let iso = ISO8601DateFormatter()
+    /// Grok Build CLI data home: `GROK_HOME` when set, else `~/.grok`.
+    let grokHome: URL
 
-    init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(home: URL = FileManager.default.homeDirectoryForCurrentUser,
+         environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.home = home
+        self.grokHome = Self.grokHome(home: home, environment: environment)
+    }
+
+    static func grokHome(home: URL = FileManager.default.homeDirectoryForCurrentUser,
+                         environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        if let custom = environment["GROK_HOME"]?.trimmingCharacters(in: .whitespaces), !custom.isEmpty {
+            return URL(fileURLWithPath: (custom as NSString).expandingTildeInPath)
+        }
+        return home.appending(path: ".grok")
     }
 
     func scanAll(claude5hLimit: Int, enabled: Set<Service>) -> [ServiceSummary] {
         // Disabled providers are not scanned at all.
         var c = enabled.contains(.claude) ? scanClaude() : ServiceSummary(service: .claude, available: false)
         var x = enabled.contains(.codex) ? scanCodex() : ServiceSummary(service: .codex, available: false)
+        let g = enabled.contains(.grok) ? scanGrok() : ServiceSummary(service: .grok, available: false)
         if enabled.contains(.claude) {
             let f = planFields(.claude)
             c.plan = PlanName.claude(organizationType: f["type"], rateLimitTier: f["tier"])
@@ -81,12 +96,12 @@ actor UsageScanner {
             x.periodTokens = windowTokens(.codex, since: start).total
             x.periodSource = "限額視窗（\(start.formatted(date: .omitted, time: .shortened)) 起）"
         }
-        return [c, x].filter { enabled.contains($0.service) }
+        return [c, x, g].filter { enabled.contains($0.service) }
     }
 
     private func prune() {
         let cutoff = Date().addingTimeInterval(-24 * 3600)
-        for svc in [Service.claude, .codex] {
+        for svc in Service.allCases {
             for k in (states[svc] ?? [:]).keys { states[svc]![k]!.recent.removeAll { $0.0 < cutoff } }
         }
     }
@@ -143,6 +158,7 @@ actor UsageScanner {
                         }
                     }
                 }
+            case .grok: break   // plan comes from GrokUsageClient (/v1/settings)
             }
         }
         planCache[svc] = (m, fields)
@@ -355,5 +371,84 @@ actor UsageScanner {
         states[.codex] = map
         return summarize(.codex, note: note, missing: nil)
     }
-}
 
+    // MARK: - Grok Build CLI: $GROK_HOME/sessions/<encoded-cwd>/<session>/updates.jsonl  (turn_completed)
+
+    private func scanGrok() -> ServiceSummary {
+        let dir = grokHome.appending(path: "sessions")
+        let note = "~/.grok/sessions/**/updates.jsonl（turn_completed 事件）"
+        guard fm.fileExists(atPath: dir.path) else {
+            states[.grok] = [:]
+            return summarize(.grok, note: note, missing: "找不到 ~/.grok/sessions（尚未使用 Grok CLI）")
+        }
+        let urls = files(under: dir, ext: "jsonl").filter { $0.lastPathComponent == "updates.jsonl" }
+        let paths = Set(urls.map(\.path))
+        let oldMap = states[.grok] ?? [:]
+        var map = oldMap.filter { paths.contains($0.key) }
+        var changed = map.count != oldMap.count
+        let needle = Data("\"turn_completed\"".utf8)
+        for url in urls {
+            let previous = map[url.path]
+            var st = previous ?? FileState()
+            let lines = newLines(url.path, &st)
+            changed = changed || previous == nil || previous?.identity != st.identity || !lines.isEmpty
+            for line in lines where line.range(of: needle) != nil {
+                guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      let params = obj["params"] as? [String: Any],
+                      let update = params["update"] as? [String: Any],
+                      update["sessionUpdate"] as? String == "turn_completed",
+                      let usage = update["usage"] as? [String: Any],
+                      let t = grokTokens(usage), t.total > 0 else { continue }
+                let meta = params["_meta"] as? [String: Any]
+                guard let date = grokDate(meta?["agentTimestampMs"], obj["timestamp"]) else { continue }
+                let record = ClaudeRecord(date: date, tokens: t, sidechain: false)
+                if let id = meta?["eventId"] as? String, !id.isEmpty { st.grokTurns[id] = record }
+                else { st.grokUnkeyed.append(record) }
+            }
+            map[url.path] = st
+        }
+        if changed { rebuildGrokAggregates(&map) }
+        states[.grok] = map
+        return summarize(.grok, note: note, missing: nil)
+    }
+
+    /// Grok records OpenAI-style usage: `inputTokens` includes cache reads and writes, and
+    /// `reasoningTokens` is already inside `outputTokens`. Top-level totals, else the per-model sum.
+    private func grokTokens(_ usage: [String: Any]) -> TokenBreakdown? {
+        func split(_ u: [String: Any]) -> TokenBreakdown {
+            let input = max(0, int(u["inputTokens"]))
+            let read = min(max(0, int(u["cachedReadTokens"])), input)
+            let write = min(max(0, int(u["cacheCreationTokens"])), input - read)
+            return TokenBreakdown(input: input - read - write, output: max(0, int(u["outputTokens"])),
+                                  cacheRead: read, cacheWrite: write)
+        }
+        let top = split(usage)
+        if top.total > 0 { return top }
+        guard let models = usage["modelUsage"] as? [String: Any] else { return nil }
+        return models.values.compactMap { $0 as? [String: Any] }.map(split).reduce(TokenBreakdown(), +)
+    }
+
+    /// `_meta.agentTimestampMs` (epoch ms), else the envelope `timestamp` (epoch seconds, or ISO 8601).
+    private func grokDate(_ ms: Any?, _ envelope: Any?) -> Date? {
+        if let ms = (ms as? NSNumber)?.doubleValue, ms > 0 { return Date(timeIntervalSince1970: ms / 1000) }
+        if let s = (envelope as? NSNumber)?.doubleValue, s > 0 { return Date(timeIntervalSince1970: s) }
+        return parseDate(envelope as? String)
+    }
+
+    /// Forked and resumed sessions copy earlier events into their own `updates.jsonl`; each eventId
+    /// counts once, attributed to the first path in sorted order.
+    private func rebuildGrokAggregates(_ map: inout [String: FileState]) {
+        var seen = Set<String>()
+        let cutoff = Date().addingTimeInterval(-24 * 3600)
+        for path in map.keys.sorted() {
+            guard var st = map[path] else { continue }
+            st.days = [:]; st.recent = []
+            let fresh = st.grokTurns.filter { seen.insert($0.key).inserted }.values
+            for record in Array(fresh) + st.grokUnkeyed {
+                st.days[record.date.dayKey, default: .init()] += record.tokens
+                if record.date > cutoff { st.recent.append((record.date, record.tokens)) }
+            }
+            map[path] = st
+        }
+    }
+}

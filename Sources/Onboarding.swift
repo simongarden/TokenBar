@@ -11,8 +11,21 @@ enum Prefs {
     static func key(_ id: String) -> String { "enabled.\(id)" }
     static func isEnabled(_ id: String) -> Bool { UserDefaults.standard.object(forKey: key(id)) as? Bool ?? true }
     static func setEnabled(_ id: String, _ on: Bool) { UserDefaults.standard.set(on, forKey: key(id)) }
-    static func isEnabled(_ s: Service) -> Bool { isEnabled(s.rawValue) }
+    /// Grok CLI was added after release: with no saved choice it is on only when `~/.grok` exists,
+    /// so upgrading users without the CLI don't get an empty card.
+    static func isEnabled(_ s: Service) -> Bool {
+        if s == .grok, UserDefaults.standard.object(forKey: key(s.rawValue)) == nil {
+            return FileManager.default.fileExists(atPath: UsageScanner.grokHome().path)
+        }
+        return isEnabled(s.rawValue)
+    }
+    /// Grok Bot activity icon (the Grok CLI service uses `Service.grok`, key "grokcli").
     static var grokEnabled: Bool { isEnabled("grok") }
+    /// Weekly quota via the Grok CLI login; off = local session logs only.
+    static var grokQuota: Bool {
+        get { UserDefaults.standard.object(forKey: SettingsKey.grokQuota) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.grokQuota) }
+    }
     static var enabledServices: Set<Service> { Set(Service.allCases.filter { isEnabled($0) }) }
     static var claudeAPI: Bool {
         get { ClaudeAccessPolicy.canReadCredentials() }
@@ -39,7 +52,7 @@ enum Prefs {
         }
         guard d.object(forKey: onboardingDoneKey) == nil else { return }
         if d.object(forKey: ClaudeUsageClient.savedKey) != nil || d.object(forKey: ClaudeUsageClient.nextKey) != nil {
-            for id in ["claude", "codex", "grok"] { setEnabled(id, true) }
+            for id in ["claude", "codex", "grok"] + [Service.grok.rawValue] { setEnabled(id, true) }
             d.set(true, forKey: onboardingDoneKey)
         }
     }
@@ -55,7 +68,7 @@ extension Notification.Name {
 // MARK: - Detection
 
 struct ProviderInfo: Sendable, Identifiable {
-    let id: String          // claude / codex / grok
+    let id: String          // claude / codex / grokcli (Grok CLI) / grok (Grok Bot)
     let name: String
     let logo: String
     let detected: Bool
@@ -96,6 +109,10 @@ enum ProviderDetector {
             }
         }
         let xDetected = xEmail != nil || fm.fileExists(atPath: home + "/.codex/sessions")
+        // Grok Build CLI
+        let grokHome = UsageScanner.grokHome()
+        let kEmail = GrokCredential.read(grokHome: grokHome)?.email
+        let kDetected = kEmail != nil || fm.fileExists(atPath: grokHome.appending(path: "sessions").path)
         let gDetected = fm.fileExists(atPath: "/Applications/Grok Bot.app")
         return [
             ProviderInfo(id: "claude", name: "Claude", logo: "LogoClaudeColor", detected: cDetected,
@@ -106,6 +123,10 @@ enum ProviderDetector {
                          status: xDetected ? PlanName.accountLine(xEmail, livePlans["codex"] ?? xPlan) : "未偵測到",
                          help: xDetected ? nil : "請先安裝 Codex App 或 CLI 並登入。",
                          link: URL(string: "https://developers.openai.com/codex")),
+            ProviderInfo(id: Service.grok.rawValue, name: "Grok", logo: "LogoGrokMono", detected: kDetected,
+                         status: kDetected ? PlanName.accountLine(kEmail, livePlans[Service.grok.rawValue]) : "未偵測到",
+                         help: kDetected ? nil : "到上方「Grok 連線」按一下即可自動安裝並登入。",
+                         link: URL(string: "https://docs.x.ai/build")),
             ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: gDetected,
                          status: (gDetected ? "" : "未偵測到 · ") + "僅顯示背景運作狀態，無用量數字",
                          help: nil, link: nil),
@@ -141,10 +162,7 @@ enum ProviderDetector {
         NSApp.activate()
         try? await Task.sleep(for: .milliseconds(150))
         let st: OSStatus = await Task.detached {
-            let (status, data) = ClaudeKeychain.copyData(allowUI: true)
-            guard status == errSecSuccess else { return status }
-            guard let data, ClaudeKeychain.parseToken(data) != nil else { return errSecDecode }
-            return errSecSuccess
+            ClaudeKeychain.authorize()
         }.value
         if st == errSecSuccess {
             ClaudeAccessPolicy.grantCredentialRead()
@@ -298,7 +316,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: "chart.bar.xaxis").font(.system(size: 40, weight: .semibold)).foregroundStyle(.tint)
             Text("歡迎使用 OKM SKÍRR").font(.largeTitle.weight(.bold))
-            Text("在選單列即時掌握 Claude 與 Codex 的用量、限額與重置時間。")
+            Text("在選單列即時掌握 Claude、Codex 與 Grok 的用量、限額與重置時間。")
                 .font(.title3).foregroundStyle(.secondary)
             Label("所有資料都只在這台 Mac 上讀取與計算。", systemImage: "lock.shield")
             Label("不收集、不上傳任何使用記錄或對話內容。", systemImage: "icloud.slash")
@@ -326,7 +344,7 @@ struct OnboardingView: View {
             Text("連接 Claude").font(.title2.weight(.bold))
             Text("連接後就能看到用量與重置時間。你也可以稍後再設定，先查看本機用量。")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            ClaudeConnectionPanel(presentation: connection, busy: store?.isConnectingClaude == true,
+            ConnectionPanel(presentation: connection, busy: store?.isConnectingClaude == true,
                                   note: store?.claudeConnectionNote, action: {
                 if connection.action == .connect {
                     Task { await store?.connectClaude() }
@@ -394,7 +412,7 @@ struct OnboardingView: View {
 
 struct SettingsView: View {
     var store: UsageStore? = nil
-    @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: ["claude", "codex", "grok"].map { ($0, Prefs.isEnabled($0)) })
+    @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: Service.allCases.map { ($0.rawValue, Prefs.isEnabled($0)) } + [("grok", Prefs.grokEnabled)])
     @State private var connected = Prefs.claudeAPI
     @State private var autoRepair = Prefs.claudeCLIRefresh
     @State private var awaitingLogin = false
@@ -455,6 +473,30 @@ struct SettingsView: View {
         }
     }
 
+    private var grok: GrokConnectionPresentation {
+        store?.grokConnection ?? GrokConnectionPresentation(installed: GrokCLI.locate() != nil, quotaOn: Prefs.grokQuota, status: nil)
+    }
+
+    /// One button does whatever is needed next (install + sign in, sign in again, turn the quota on);
+    /// the store connects by itself once the Terminal window finishes.
+    @ViewBuilder private var grokPanel: some View {
+        ConnectionPanel(presentation: grok, service: "Grok", note: store?.grokNote,
+                        awaitingLogin: store?.grokAwaitingLogin == true, action: {
+            store?.connectGrok()
+            sel[Service.grok.rawValue] = true
+        })
+        if grok.action == .install || grok.action == .login {
+            Text("會開啟「終端機」視窗自動完成，你只需要在瀏覽器登入 Grok 帳號。OKM Skirr 只讀取登入結果，不會看到或儲存你的密碼。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        if Prefs.grokQuota && grok.action != .install && grok.action != .enableQuota {
+            Button("停止查詢 Grok 每週額度") {
+                Prefs.grokQuota = false
+                NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+            }.font(.caption).buttonStyle(.link)
+        }
+    }
+
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 12) {
@@ -485,7 +527,7 @@ struct SettingsView: View {
                 }.padding(16).background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 18))
             }
             Text("Claude 連線").font(.headline)
-            ClaudeConnectionPanel(presentation: connection, busy: busy,
+            ConnectionPanel(presentation: connection, busy: busy,
                 note: loginNote ?? store?.claudeConnectionNote, awaitingLogin: awaitingLogin,
                 action: performAction, confirmLogin: { connect() })
             if connected {
@@ -507,6 +549,9 @@ struct SettingsView: View {
                 Link("安裝 Claude Code", destination: URL(string: "https://code.claude.com/docs/en/quickstart")!)
                     .font(.caption)
             }
+            Divider()
+            Text("Grok 連線").font(.headline)
+            grokPanel
             Divider()
             Text("顯示的服務").font(.headline)
             ForEach(providers) { p in
@@ -546,9 +591,13 @@ struct SettingsView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 14)
             Divider().padding(.horizontal, 28)
-            ScrollView { settingsContent }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+            if isSnapshot {
+                settingsContent   // ImageRenderer draws ScrollView content blank
+            } else {
+                ScrollView { settingsContent }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))

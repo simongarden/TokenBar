@@ -28,6 +28,7 @@ enum ClaudeAccessPolicy {
         defaults.set(false, forKey: SettingsKey.claudeCredentialConsent)
         defaults.set(false, forKey: SettingsKey.claudeCLIConsent)
         defaults.removeObject(forKey: ClaudeUsageClient.savedKey)
+        ClaudeKeychain.setReadMode(.securityTool, defaults)
     }
 }
 
@@ -44,8 +45,9 @@ enum ClaudeKeychain {
         return value as String
     }()
 
-    /// `allowUI: false` never shows the macOS access prompt: an item the app isn't
-    /// "Always Allow"-ed for returns errSecInteractionNotAllowed instead.
+    /// `allowUI: false` asks the Keychain not to prompt. Verified 2026-10-21: securityd still shows the
+    /// access dialog once Claude Code has rewritten the item, so background reads go through
+    /// `SecurityTool` first and only use this path while the item is unchanged since an explicit allow.
     static func copyData(allowUI: Bool) -> (OSStatus, Data?) {
         guard allowUI || ClaudeAccessPolicy.canReadCredentials() else { return (errSecAuthFailed, nil) }
         var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
@@ -61,6 +63,17 @@ enum ClaudeKeychain {
         var out: CFTypeRef?
         let st = SecItemCopyMatching(q as CFDictionary, &out)
         return (st, out as? Data)
+    }
+
+    /// Attributes only (no ACL check, never prompts): the item's modification date.
+    static func modificationDate() -> Date? {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: service,
+                                kSecReturnAttributes as String: true,
+                                kSecMatchLimit as String: kSecMatchLimitOne]
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return (out as? [String: Any])?[kSecAttrModificationDate as String] as? Date
     }
 
     /// `claudeAiOauth.accessToken` and its expiry (`expiresAt`, epoch milliseconds).
@@ -80,16 +93,127 @@ enum ClaudeKeychain {
         }
     }
 
-    /// Background read: never prompts.
+    /// How background reads reach the item. Claude Code stores it with `security add-generic-password -U`,
+    /// which keeps `/usr/bin/security` trusted but drops any "Always Allow" given to OKM Skirr, so
+    /// `.securityTool` is the normal path. `.keychain` is the fallback after the tool failed: reads stay
+    /// silent only while the item is unchanged since the user's explicit allow.
+    enum ReadMode: Equatable { case securityTool, keychain(allowedAt: Date?) }
+    static let modeKey = "claudeKeychainReadMode"            // "keychain" = fallback; absent = security tool
+    static let allowedAtKey = "claudeKeychainAllowedModified" // item modification date at the explicit allow
+
+    static func readMode(_ d: UserDefaults = .standard) -> ReadMode {
+        d.string(forKey: modeKey) == "keychain" ? .keychain(allowedAt: d.object(forKey: allowedAtKey) as? Date) : .securityTool
+    }
+
+    static func setReadMode(_ m: ReadMode, _ d: UserDefaults = .standard) {
+        switch m {
+        case .securityTool: d.removeObject(forKey: modeKey); d.removeObject(forKey: allowedAtKey)
+        case .keychain(let at): d.set("keychain", forKey: modeKey); d.set(at, forKey: allowedAtKey)
+        }
+    }
+
+    enum BackgroundStep: Equatable { case securityTool, keychain, askUser }
+
+    /// The fallback never reads an item that changed since the explicit allow: that read would prompt.
+    static func backgroundStep(_ mode: ReadMode, modified: Date?) -> BackgroundStep {
+        switch mode {
+        case .securityTool: .securityTool
+        case .keychain(let at): at != nil && at == modified ? .keychain : .askUser
+        }
+    }
+
+    /// Background read: never shows a prompt. A security-tool failure switches to the fallback and
+    /// returns `.denied`, which offers the "允許連接" button instead of retrying every refresh.
     static func readToken() -> Result<(String, Date?), ClaudeUsageClient.Status> {
         guard ClaudeAccessPolicy.canReadCredentials() else { return .failure(.consentRequired) }
-        let (st, data) = copyData(allowUI: false)
-        if st != errSecSuccess {
-            clog.notice("keychain read OSStatus=\(st, privacy: .public)")
-            return .failure(status(for: st))
+        switch backgroundStep(readMode(), modified: modificationDate()) {
+        case .securityTool:
+            switch SecurityTool.read(service: service) {
+            case .success(let data):
+                guard let t = parseToken(data) else { return .failure(.failed) }
+                return .success((t.token, t.expiresAt))
+            case .failure(.notFound): return .failure(.noCredential)
+            case .failure(let e):
+                clog.notice("security tool read failed: \(String(describing: e), privacy: .public); waiting for an explicit allow")
+                setReadMode(.keychain(allowedAt: nil))
+                return .failure(.denied)
+            }
+        case .keychain:
+            let (st, data) = copyData(allowUI: false)
+            if st != errSecSuccess {
+                clog.notice("keychain read OSStatus=\(st, privacy: .public)")
+                return .failure(status(for: st))
+            }
+            guard let data, let t = parseToken(data) else { return .failure(.failed) }
+            return .success((t.token, t.expiresAt))
+        case .askUser:
+            clog.notice("credential item changed since the last allow; waiting for an explicit allow")
+            return .failure(.denied)
         }
-        guard let data, let t = parseToken(data) else { return .failure(.failed) }
-        return .success((t.token, t.expiresAt))
+    }
+
+    /// The explicit "連接／允許連接" action: the security tool first (no prompt), else the Keychain with
+    /// the macOS prompt. Records which path worked for later background reads.
+    static func authorize() -> OSStatus {
+        if case .success(let data) = SecurityTool.read(service: service), parseToken(data) != nil {
+            setReadMode(.securityTool)
+            return errSecSuccess
+        }
+        let (st, data) = copyData(allowUI: true)
+        guard st == errSecSuccess else { return st }
+        guard let data, parseToken(data) != nil else { return errSecDecode }
+        setReadMode(.keychain(allowedAt: modificationDate()))
+        return errSecSuccess
+    }
+}
+
+/// Reads a generic password through `/usr/bin/security`, the tool Claude Code itself uses, so the
+/// item's own ACL applies instead of a per-app "Always Allow". The secret only passes through a pipe
+/// into memory. A run that does not finish within `timeout` (e.g. waiting on a prompt) is killed.
+enum SecurityTool {
+    enum Failure: Error, Equatable { case notFound, exit(Int32), timedOut, launch }
+
+    static func read(service: String, executable: URL = URL(fileURLWithPath: "/usr/bin/security"),
+                     timeout: TimeInterval = 5) -> Result<Data, Failure> {
+        let p = Process()
+        p.executableURL = executable
+        p.arguments = ["find-generic-password", "-s", service, "-w"]
+        p.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": NSHomeDirectory()]
+        p.standardInput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        let out = Pipe()
+        p.standardOutput = out
+        let done = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in done.signal() }
+        do { try p.run() } catch { return .failure(.launch) }
+        // The token is a few KB, well below the pipe buffer, so reading after exit cannot deadlock.
+        if done.wait(timeout: .now() + timeout) == .timedOut {
+            p.terminate()
+            if done.wait(timeout: .now() + 2) == .timedOut { kill(p.processIdentifier, SIGKILL) }
+            return .failure(.timedOut)
+        }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        switch p.terminationStatus {
+        case 0: return .success(decode(data))
+        case 44: return .failure(.notFound)   // errSecItemNotFound
+        case let c: return .failure(.exit(c))
+        }
+    }
+
+    /// `-w` prints the secret plus a newline, or hex when the stored bytes are not printable text.
+    static func decode(_ raw: Data) -> Data {
+        var d = raw
+        while let last = d.last, last == 0x0A || last == 0x0D { d.removeLast() }
+        guard let text = String(data: d, encoding: .utf8), !text.isEmpty, text.count % 2 == 0,
+              text.allSatisfy(\.isHexDigit), !text.hasPrefix("{") else { return d }
+        var bytes = Data(capacity: text.count / 2)
+        var i = text.startIndex
+        while i < text.endIndex {
+            let j = text.index(i, offsetBy: 2)
+            guard let b = UInt8(text[i..<j], radix: 16) else { return d }
+            bytes.append(b); i = j
+        }
+        return bytes
     }
 }
 

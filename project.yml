@@ -65,6 +65,8 @@ targets:
       - Sources/StatusImageRenderer.swift
       - Sources/ClaudeConnectionPresentation.swift
       - Sources/ClaudeUsageClient.swift
+      - Sources/GrokUsageClient.swift
+      - Sources/GrokCLI.swift
       - Sources/RecentFileWatcher.swift
       - Sources/ClaudeCLI.swift
     settings:

@@ -15,7 +15,15 @@ final class UsageStore {
     var isConnectingClaude = false
     var claudeNeedsLogin = false
     var claudeConnectionNote: String?
+    var grokStatus: GrokUsageClient.Status?
+    var grokInstalled = GrokCLI.locate() != nil
+    var grokAccount: String?
+    /// A setup/login Terminal window is open; the store watches `auth.json` and connects by itself.
+    var grokAwaitingLogin = false
+    var grokNote: String?
+    @ObservationIgnored private var grokWatch: Task<Void, Never>?
     private let scanner = UsageScanner()
+    private let grokClient = GrokUsageClient()
     private let claudeClient = ClaudeUsageClient(refreshCredential: ClaudeCLI.refreshIfEnabled)
     @ObservationIgnored private var loop: Task<Void, Never>?
     var active: Set<Service> = []
@@ -27,6 +35,7 @@ final class UsageStore {
     init() {
         UserDefaults.standard.register(defaults: [SettingsKey.labelMode: LabelMode.mixed.rawValue,
                                                   SettingsKey.claudeOAuth: false,
+                                                  SettingsKey.grokQuota: true,
                                                   SettingsKey.claude5hLimit: 0])
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -78,6 +87,14 @@ final class UsageStore {
                 }
             }
         } else { claudeStatus = nil }
+        grokInstalled = GrokCLI.locate() != nil
+        grokAccount = GrokCredential.read()?.email
+        if Prefs.grokQuota && Prefs.isEnabled(.grok), let i = s.firstIndex(where: { $0.service == .grok }) {
+            let r = await grokClient.fetch()
+            grokStatus = r.status
+            s[i].rate = r.rate
+            s[i].plan = r.plan
+        } else { grokStatus = nil }
         summaries = s.filter { Prefs.isEnabled($0.service) }
         lastUpdated = .now
         isRefreshing = false
@@ -119,6 +136,55 @@ final class UsageStore {
             claudeNeedsLogin = true
             claudeConnectionNote = "這次需要重新登入。請按「登入 Claude」，完成後再回到這裡。"
         }
+    }
+
+    var grokConnection: GrokConnectionPresentation {
+        GrokConnectionPresentation(installed: grokInstalled, quotaOn: Prefs.grokQuota, status: grokStatus, account: grokAccount)
+    }
+
+    /// The single Grok button: install + sign in, sign in again, or turn the quota lookup back on.
+    /// Installing and signing in run only in a Terminal window opened here; nothing runs in the background.
+    func connectGrok() {
+        Prefs.setEnabled(Service.grok.rawValue, true)
+        grokNote = nil
+        if grokConnection.action == .enableQuota {
+            Prefs.grokQuota = true
+            Task { await grokClient.reset(); await refresh() }
+            return
+        }
+        let before = authStamp()
+        do {
+            let command = try GrokCLI.setupCommandFile(cli: GrokCLI.locate())
+            guard NSWorkspace.shared.open(command) else {
+                try? FileManager.default.removeItem(at: command.deletingLastPathComponent())
+                grokNote = "無法開啟視窗，請稍後再試。"; return
+            }
+        } catch { grokNote = "視窗無法準備完成，請稍後再試。"; return }
+        Prefs.grokQuota = true
+        grokAwaitingLogin = true
+        NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+        grokWatch?.cancel()
+        grokWatch = Task { [weak self] in
+            // Up to 15 minutes: installing can take a while, and the browser login waits on the user.
+            for _ in 0..<450 {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, !Task.isCancelled else { return }
+                let stamp = self.authStamp()
+                if stamp != before, let c = GrokCredential.read(), (c.expiresAt ?? .distantFuture) > .now {
+                    await self.grokClient.reset()
+                    self.grokAwaitingLogin = false
+                    await self.refresh()
+                    return
+                }
+            }
+            self?.grokAwaitingLogin = false
+            self?.grokNote = "還沒有偵測到登入。完成登入後，這裡會在下次更新時自動連接。"
+        }
+    }
+
+    /// `auth.json` modification time; `grok login` rewrites the file.
+    private func authStamp() -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: GrokCredential.authFile().path))?[.modificationDate] as? Date
     }
 
     private func pollActivity() async {
@@ -283,7 +349,7 @@ struct TokenBarApp: App {
                 if name.hasPrefix("onboard"), let n = Int(name.dropFirst(7)) {
                     view = AnyView(OnboardingView(initialStep: n) {}.environment(store).frame(width: 520, height: 440))
                 } else if name == "settings" {
-                    view = AnyView(SettingsView().frame(width: 620, height: 820))
+                    view = AnyView(SettingsView(store: store).frame(width: 620))
                 } else if name == "menubar" {
                     // Menu bar label: dark / light bar × idle / all services active.
                     let all = Set(Service.allCases)

@@ -14,24 +14,28 @@ struct TokenBreakdown: Sendable, Equatable {
 }
 
 enum Service: String, CaseIterable, Sendable, Identifiable {
-    case claude, codex
+    /// `grok` is the Grok Build CLI; its raw value stays clear of the older "grok" preference key,
+    /// which belongs to the Grok Bot activity icon.
+    case claude, codex, grok = "grokcli"
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .claude: "Claude"
         case .codex: "Codex"
+        case .grok: "Grok"
         }
     }
     var logoMono: String {
-        switch self { case .claude: "LogoClaudeMono"; case .codex: "LogoCodexMono" }
+        switch self { case .claude: "LogoClaudeMono"; case .codex: "LogoCodexMono"; case .grok: "LogoGrokMono" }
     }
     var logoColor: String {
-        switch self { case .claude: "LogoClaudeColor"; case .codex: "LogoCodexColor" }
+        switch self { case .claude: "LogoClaudeColor"; case .codex: "LogoCodexColor"; case .grok: "LogoGrokMono" }
     }
     var symbol: String {
         switch self {
         case .claude: "asterisk"
         case .codex: "chevron.left.forwardslash.chevron.right"
+        case .grok: "sparkle"
         }
     }
 }
@@ -118,6 +122,7 @@ enum SettingsKey {
     static let claudeCredentialConsent = "claudeCredentialReadConsentV1"
     static let claudeCLIConsent = "claudeBackgroundCLIConsentV1"
     static let claudeCLIRefresh = "claudeCLIRefreshOnExpiry"
+    static let grokQuota = "grokQuotaFromCLILogin"
 }
 
 func percentText(_ r: RateInfo?) -> String {
@@ -153,6 +158,15 @@ enum PlanName {
         guard let p = planType?.lowercased(), !p.isEmpty else { return nil }
         return ["plus": "Plus", "pro": "Pro", "team": "Team", "business": "Business", "enterprise": "Enterprise",
                 "edu": "Edu", "free": "Free", "go": "Go"][p] ?? capitalized(p)
+    }
+
+    /// Grok CLI `subscription_tier_display` / credits `subscriptionTier` (e.g. "SuperGrok Heavy").
+    static func grok(_ tier: String?) -> String? {
+        guard let t = tier?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        let key = t.lowercased().replacingOccurrences(of: "_", with: " ")
+        if key.contains("heavy") { return "SuperGrok Heavy" }
+        if key.contains("supergrok") || key.contains("super grok") { return "SuperGrok" }
+        return t.contains(" ") || t.contains(where: \.isUppercase) ? t : capitalized(t)
     }
 
     /// Settings row subtitle: "<email> · <plan>", either part omitted when unknown.
