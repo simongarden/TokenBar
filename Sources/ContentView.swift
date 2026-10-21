@@ -81,7 +81,7 @@ struct ContentView: View {
             Button {
                 Task { await store.refresh() }
             } label: {
-                Label("立即更新", systemImage: "arrow.clockwise")
+                Label("數據更新", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.glass)
             .disabled(store.isRefreshing)
