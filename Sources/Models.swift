@@ -18,8 +18,8 @@ enum Service: String, CaseIterable, Sendable, Identifiable {
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .claude: "Claude Code"
-        case .codex: "ChatGPT / Codex"
+        case .claude: "Claude"
+        case .codex: "Codex"
         }
     }
     var logoMono: String {

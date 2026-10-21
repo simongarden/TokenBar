@@ -233,9 +233,9 @@ struct TokenBarApp: App {
             let scheme: ColorScheme = ProcessInfo.processInfo.environment["SKIRR_PREVIEW_LIGHT"] == "1" ? .light : .dark
             NSApp.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
             let providers = [
-                ProviderInfo(id: "claude", name: "Claude Code", logo: "LogoClaudeColor", detected: true,
+                ProviderInfo(id: "claude", name: "Claude", logo: "LogoClaudeColor", detected: true,
                              status: "已偵測到本機記錄", help: nil, link: nil),
-                ProviderInfo(id: "codex", name: "ChatGPT / Codex", logo: "LogoCodexColor", detected: true,
+                ProviderInfo(id: "codex", name: "Codex", logo: "LogoCodexColor", detected: true,
                              status: "已偵測到本機記錄", help: nil, link: nil),
                 ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: true,
                              status: "僅顯示背景運作狀態，無用量數字", help: nil, link: nil)
@@ -348,6 +348,21 @@ struct TokenBarApp: App {
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.redraw() }
         }
+        // Status items can move between displays without any usage data changing.
+        for name in [NSWindow.didChangeBackingPropertiesNotification, NSWindow.didChangeScreenNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let window = note.object as? NSWindow
+                MainActor.assumeIsolated {
+                    guard let self, let window,
+                          window === self.item.button?.window else { return }
+                    self.redraw()
+                }
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.redraw() }
+        }
         track()
         // Countdown text: redraw once a minute; cached image is reused unless the strings changed.
         let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.redraw() } }
@@ -398,32 +413,20 @@ struct TokenBarApp: App {
             "\($0.mixedValue.text)|\(percentText($0.rate))|\($0.today.total)|" +
             "\(countdown($0.rate?.primary?.resetsAt, weekly: false) ?? "")|\(countdown($0.rate?.secondary?.resetsAt, weekly: true) ?? "")"
         }.joined(separator: ";")
-        let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)|g\(store.grokActive)"
+        let scale = item.button?.window?.backingScaleFactor
+            ?? NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
+        let base = "\(texts)|\(mode.rawValue)|\(active.map(\.rawValue).sorted())|\(dark)|g\(store.grokActive)|scale\(scale)"
         let img = LabelCache.shared.image(base: base, frame: 0) {
-            let r = ImageRenderer(content: MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active, grok: store.grokActive,
-                                                               palette: dark ? .dark : .light))
-            r.scale = NSScreen.main?.backingScaleFactor ?? 2
-            let img = r.nsImage ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
+            let content = MenuBarLabelContent(summaries: store.summaries, mode: mode, active: active,
+                                             grok: store.grokActive, palette: dark ? .dark : .light)
+            let img = StatusImageRenderer.image(content, preferredScale: scale)
+                ?? NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: nil)!
             // Only the dark idle frame is single-color (white) and can be a template; the light idle frame
             // is gray + black and every active frame is two-tone, so they carry explicit colors.
             img.isTemplate = active.isEmpty && dark
             return img
         }
         if item.button?.image !== img { item.button?.image = img }
-    }
-}
-
-/// Caches rendered menu-bar frames so the animation is a cheap image swap.
-@MainActor final class LabelCache {
-    static let shared = LabelCache()
-    private var base = ""
-    private var frames: [Int: NSImage] = [:]
-    func image(base: String, frame: Int, render: () -> NSImage) -> NSImage {
-        if base != self.base { self.base = base; frames.removeAll() }
-        if let img = frames[frame] { return img }
-        let img = render()
-        frames[frame] = img
-        return img
     }
 }
 

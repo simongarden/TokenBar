@@ -144,6 +144,14 @@ struct ServiceCard: View {
                     .padding(.bottom, 11)
                 DayCellsChart(days: summary.last7, colors: [])
                     .compositingGroup()   // keep explicit colors out of glass vibrancy
+            } else if summary.service == .claude, connection?.connected == true {
+                Text("已連接 Claude；尚無本機使用 Code 記錄")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if summary.service == .codex {
+                Text("尚無本機 Codex 使用記錄；目前僅支援 Codex 用量統計。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label(summary.reason ?? "無資料", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.secondary)
@@ -172,7 +180,7 @@ struct ServiceCard: View {
                 if let p = r.primary { windowRow(p, title: p.windowMinutes == 1440 ? "每日" : "5 小時", est: r.isEstimate) }
                 if let w = r.secondary { windowRow(w, title: "每週", est: r.isEstimate) }
             }
-        } else {
+        } else if summary.service != .codex || summary.available {
             Label(connection?.detail ?? rateNote, systemImage: "gauge.with.dots.needle.0percent")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

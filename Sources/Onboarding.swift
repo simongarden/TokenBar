@@ -92,13 +92,13 @@ enum ProviderDetector {
         let xDetected = xEmail != nil || fm.fileExists(atPath: home + "/.codex/sessions")
         let gDetected = fm.fileExists(atPath: "/Applications/Grok Bot.app")
         return [
-            ProviderInfo(id: "claude", name: "Claude Code", logo: "LogoClaudeColor", detected: cDetected,
+            ProviderInfo(id: "claude", name: "Claude", logo: "LogoClaudeColor", detected: cDetected,
                          status: cDetected ? (cEmail.map { "已偵測到 · \($0)" } ?? "已偵測到本機記錄") : "未偵測到",
                          help: cDetected ? nil : "請先安裝 Claude Code 並登入 Claude 帳號。",
                          link: URL(string: "https://docs.anthropic.com/en/docs/claude-code")),
-            ProviderInfo(id: "codex", name: "ChatGPT / Codex", logo: "LogoCodexColor", detected: xDetected,
+            ProviderInfo(id: "codex", name: "Codex", logo: "LogoCodexColor", detected: xDetected,
                          status: xDetected ? (xEmail.map { "已偵測到 · \($0)" } ?? "已偵測到本機記錄") : "未偵測到",
-                         help: xDetected ? nil : "請先安裝 Codex（ChatGPT App 或 CLI）並登入。",
+                         help: xDetected ? nil : "請先安裝 Codex App 或 CLI 並登入。",
                          link: URL(string: "https://developers.openai.com/codex")),
             ProviderInfo(id: "grok", name: "Grok Bot", logo: "LogoGrokMono", detected: gDetected,
                          status: (gDetected ? "已偵測到 · " : "未偵測到 · ") + "僅顯示背景運作狀態，無用量數字",
@@ -290,7 +290,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: "chart.bar.xaxis").font(.system(size: 40, weight: .semibold)).foregroundStyle(.tint)
             Text("歡迎使用 OKM SKÍRR").font(.largeTitle.weight(.bold))
-            Text("在選單列即時掌握 Claude Code 與 ChatGPT / Codex 的用量、限額與重置時間。")
+            Text("在選單列即時掌握 Claude 與 Codex 的用量、限額與重置時間。")
                 .font(.title3).foregroundStyle(.secondary)
             Label("所有資料都只在這台 Mac 上讀取與計算。", systemImage: "lock.shield")
             Label("不收集、不上傳任何使用記錄或對話內容。", systemImage: "icloud.slash")

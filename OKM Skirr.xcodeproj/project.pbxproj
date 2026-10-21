@@ -12,6 +12,7 @@
 		0E696B80C3124F20FADFF0D5 /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 955A7AB77F0D4F06EBA41C29 /* Updater.swift */; };
 		0FD9796CF7110921309BC9F5 /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */; };
 		1D6F4DC7256DACAE2F9B89FA /* ClaudeCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AD7922061207F4291BAFF7 /* ClaudeCLI.swift */; };
+		2DFB5D178B2F8266A6F1C73D /* StatusImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28258564184D5C393E8E8685 /* StatusImageRenderer.swift */; };
 		4C70397C1C6FA17B2955D01D /* SKIRR_Logo_animated_v5.svg in Resources */ = {isa = PBXBuildFile; fileRef = 1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */; };
 		58E7DF1CE0902326DBCA153A /* Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05DEFD054E58ACC4ADC34B2E /* Onboarding.swift */; };
 		5F670BF04618183C06C3A14E /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */; };
@@ -21,11 +22,13 @@
 		893F3F25087A53809516990F /* ClaudeAccessPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6E0AC88C5374D9C9EFDD1C /* ClaudeAccessPolicyTests.swift */; };
 		8A659DF8871F7511CE6E6B9C /* ClaudeConnectionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9450B085FA6A58C263174B /* ClaudeConnectionPanel.swift */; };
 		8E0E62BBA47628D349C2DFEA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 150C07DDBA8E380CD102256B /* Sparkle */; };
+		8F03D373596A0D7977962840 /* StatusImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28258564184D5C393E8E8685 /* StatusImageRenderer.swift */; };
 		98B06D5C5E298DB6D9CF7FC4 /* SKIRRBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */; };
 		9BA83DC8C46C80BF2B09100D /* ClaudeConnectionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69C9258308978D18E08AC7C /* ClaudeConnectionPresentation.swift */; };
 		A3E994CCE773ECB7166BC99A /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D1C9395E574E74ADBC20E7 /* ClaudeUsageClient.swift */; };
 		B71F35872E77BD8620A49E41 /* SKIRRLogoAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */; };
 		BCD80BA3ECFFE393FF8E3CD2 /* ClaudeCLITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89272480CE2B4D0FC804D649 /* ClaudeCLITests.swift */; };
+		C4793FEF183F7480047BAA6B /* StatusImageRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8CB87C6B06E09D2C15E5122 /* StatusImageRendererTests.swift */; };
 		C4EC41B2D29D61C30409AFA2 /* RecentFileWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */; };
 		D519B1309E3B0B512E165534 /* TokenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1442C131BC37E3A1600A846 /* TokenBarApp.swift */; };
 		D8C90157BDFB8FFFE3153C64 /* ClaudeUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D1C9395E574E74ADBC20E7 /* ClaudeUsageClient.swift */; };
@@ -44,6 +47,7 @@
 		1A7E5782CCEC2CE49CDF0028 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */ = {isa = PBXFileReference; path = SKIRR_Logo_animated_v5.svg; sourceTree = "<group>"; };
 		20507F38CDE9D9343D15C6BC /* UsageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScanner.swift; sourceTree = "<group>"; };
+		28258564184D5C393E8E8685 /* StatusImageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusImageRenderer.swift; sourceTree = "<group>"; };
 		30BB96A5C787F3FCAEE5C0FC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClientTests.swift; sourceTree = "<group>"; };
 		4D9450B085FA6A58C263174B /* ClaudeConnectionPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConnectionPanel.swift; sourceTree = "<group>"; };
@@ -61,6 +65,7 @@
 		A69C9258308978D18E08AC7C /* ClaudeConnectionPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConnectionPresentation.swift; sourceTree = "<group>"; };
 		BB5670EB2AC75DA57443B7F3 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentFileWatcherTests.swift; sourceTree = "<group>"; };
+		C8CB87C6B06E09D2C15E5122 /* StatusImageRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusImageRendererTests.swift; sourceTree = "<group>"; };
 		D7D685C250D845408DCD1D0C /* UsageScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScannerTests.swift; sourceTree = "<group>"; };
 		D7E0A7502202AD1400E33BC7 /* ActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMonitor.swift; sourceTree = "<group>"; };
 		DD6E0AC88C5374D9C9EFDD1C /* ClaudeAccessPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccessPolicyTests.swift; sourceTree = "<group>"; };
@@ -95,6 +100,7 @@
 				8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */,
 				7CA0AB6A3964A3AE5FB6B763 /* SKIRRBrand.swift */,
 				66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */,
+				28258564184D5C393E8E8685 /* StatusImageRenderer.swift */,
 				E1442C131BC37E3A1600A846 /* TokenBarApp.swift */,
 				955A7AB77F0D4F06EBA41C29 /* Updater.swift */,
 				20507F38CDE9D9343D15C6BC /* UsageScanner.swift */,
@@ -138,6 +144,7 @@
 				829B4E9FC2EBA325EA69B423 /* ClaudeConnectionPresentationTests.swift */,
 				3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */,
 				C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */,
+				C8CB87C6B06E09D2C15E5122 /* StatusImageRendererTests.swift */,
 				D7D685C250D845408DCD1D0C /* UsageScannerTests.swift */,
 			);
 			path = Tests;
@@ -259,6 +266,7 @@
 				0FD9796CF7110921309BC9F5 /* RecentFileWatcher.swift in Sources */,
 				98B06D5C5E298DB6D9CF7FC4 /* SKIRRBrand.swift in Sources */,
 				B71F35872E77BD8620A49E41 /* SKIRRLogoAnimation.swift in Sources */,
+				8F03D373596A0D7977962840 /* StatusImageRenderer.swift in Sources */,
 				D519B1309E3B0B512E165534 /* TokenBarApp.swift in Sources */,
 				0E696B80C3124F20FADFF0D5 /* Updater.swift in Sources */,
 				E503BD2B08F13A33DC394F84 /* UsageScanner.swift in Sources */,
@@ -279,6 +287,8 @@
 				DF9B616B7FC566CCC5F40D05 /* Models.swift in Sources */,
 				5F670BF04618183C06C3A14E /* RecentFileWatcher.swift in Sources */,
 				C4EC41B2D29D61C30409AFA2 /* RecentFileWatcherTests.swift in Sources */,
+				2DFB5D178B2F8266A6F1C73D /* StatusImageRenderer.swift in Sources */,
+				C4793FEF183F7480047BAA6B /* StatusImageRendererTests.swift in Sources */,
 				875D4F6B68252CBBFD5433FE /* UsageScanner.swift in Sources */,
 				85E35AC210F7EE7352DD9C3E /* UsageScannerTests.swift in Sources */,
 			);
@@ -343,7 +353,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -357,7 +367,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
@@ -408,7 +418,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -428,7 +438,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
