@@ -18,6 +18,8 @@ private final class ConsentDefaults {
         #expect(!ClaudeAccessPolicy.canRunCLI(in: defaults))
         ClaudeAccessPolicy.grantCredentialRead(in: defaults)
         #expect(ClaudeAccessPolicy.canReadCredentials(in: defaults))
+        #expect(ClaudeAccessPolicy.canRunCLI(in: defaults))   // on by default once connected
+        defaults.set(false, forKey: SettingsKey.claudeCLIConsent)
         #expect(!ClaudeAccessPolicy.canRunCLI(in: defaults))
         defaults.set(true, forKey: SettingsKey.claudeCLIConsent)
         #expect(ClaudeAccessPolicy.canRunCLI(in: defaults))
@@ -27,7 +29,7 @@ private final class ConsentDefaults {
         #expect(!ClaudeAccessPolicy.canRunCLI(in: defaults))
         #expect(defaults.object(forKey: ClaudeUsageClient.savedKey) == nil)
         ClaudeAccessPolicy.grantCredentialRead(in: defaults)
-        #expect(!ClaudeAccessPolicy.canRunCLI(in: defaults))
+        #expect(ClaudeAccessPolicy.canRunCLI(in: defaults))
     }
 
     @Test func missingConsentDoesNotReadCredentialCallAPIOrRunCLI() async {

@@ -21,9 +21,10 @@ enum Prefs {
     }
     /// Grok Bot activity icon (the Grok CLI service uses `Service.grok`, key "grokcli").
     static var grokEnabled: Bool { isEnabled("grok") }
-    /// Explicit opt-in (default off): run `grok models` in the background when the login expires.
+    /// Run `grok models` in the background when the login expires. On unless the user turned it off:
+    /// the login lasts ~6 h, and verified 2026-10-22 that this refreshes it without a window or usage.
     static var grokCLIRefresh: Bool {
-        get { UserDefaults.standard.bool(forKey: SettingsKey.grokCLIRefresh) }
+        get { UserDefaults.standard.object(forKey: SettingsKey.grokCLIRefresh) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: SettingsKey.grokCLIRefresh) }
     }
     /// Weekly quota via the Grok CLI login; off = local session logs only.
@@ -502,7 +503,7 @@ struct SettingsView: View {
                     Prefs.grokCLIRefresh = value
                     NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
                 }
-            Text("Grok 登入約每 6 小時到期。開啟後，到期時會在背景啟動 Grok CLI 更新登入，不會使用額度、也不會開啟視窗。預設關閉。")
+            Text("Grok 登入約每 6 小時到期。開啟後，到期時會在背景啟動 Grok CLI 更新登入，不會使用額度、也不會開啟視窗。預設開啟。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("停止查詢 Grok 每週額度") {
                 Prefs.grokQuota = false
@@ -551,7 +552,7 @@ struct SettingsView: View {
                         Prefs.claudeCLIRefresh = value
                         NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
                     }
-                Text("允許在登入需要更新時啟動 Claude Code，可能出現系統授權視窗。預設關閉，也可只在需要時手動修復。")
+                Text("允許在登入需要更新時啟動 Claude Code，可能出現系統授權視窗。預設開啟；關閉後可只在需要時手動修復。")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("中斷 Claude 連接", role: .destructive) {
                     Prefs.claudeAPI = false; connected = false; autoRepair = false

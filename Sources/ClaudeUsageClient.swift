@@ -14,8 +14,9 @@ enum ClaudeAccessPolicy {
             && defaults.bool(forKey: SettingsKey.claudeOAuth)
     }
 
+    /// Background `claude doctor` is on by default once Claude is connected; the user can turn it off.
     static func canRunCLI(in defaults: UserDefaults = .standard) -> Bool {
-        canReadCredentials(in: defaults) && defaults.bool(forKey: SettingsKey.claudeCLIConsent)
+        canReadCredentials(in: defaults) && (defaults.object(forKey: SettingsKey.claudeCLIConsent) as? Bool ?? true)
     }
 
     static func grantCredentialRead(in defaults: UserDefaults = .standard) {
@@ -26,7 +27,7 @@ enum ClaudeAccessPolicy {
     static func revoke(in defaults: UserDefaults = .standard) {
         defaults.set(false, forKey: SettingsKey.claudeOAuth)
         defaults.set(false, forKey: SettingsKey.claudeCredentialConsent)
-        defaults.set(false, forKey: SettingsKey.claudeCLIConsent)
+        defaults.removeObject(forKey: SettingsKey.claudeCLIConsent)   // a later reconnect starts from the default
         defaults.removeObject(forKey: ClaudeUsageClient.savedKey)
         ClaudeKeychain.setReadMode(.securityTool, defaults)
     }
