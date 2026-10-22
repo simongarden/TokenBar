@@ -18,6 +18,26 @@ struct GrokCLI: Sendable {
             .map { GrokCLI(executable: URL(fileURLWithPath: $0)) }
     }
 
+    /// Lets the CLI refresh its own expired login: `grok models` only lists models (no model request,
+    /// no session written) but authenticates first, and the CLI writes the new token to `auth.json`.
+    /// Runs in a fresh private directory; `BROWSER` points at /usr/bin/false so a failed refresh cannot
+    /// open a sign-in page in the background.
+    static let refreshArguments = ["models"]
+
+    static func refreshEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var clean = ClaudeCLI.environment(from: env)
+        if let custom = env["GROK_HOME"], !custom.isEmpty { clean["GROK_HOME"] = custom }
+        clean["BROWSER"] = "/usr/bin/false"
+        return clean
+    }
+
+    func refreshLogin(timeout: TimeInterval = 30) async -> Int32? {
+        guard let dir = try? ClaudeCLI.neutralDirectory() else { return nil }
+        defer { try? FileManager.default.removeItem(at: dir) }
+        return await ClaudeCLI.runProcess(executable, Self.refreshArguments, timeout: timeout, workingDirectory: dir,
+                                          environment: Self.refreshEnvironment(), label: "grok")
+    }
+
     /// A Terminal script that installs the CLI when `cli` is nil, then runs `grok login`, which opens
     /// the browser. OKM Skirr never sees the login URL, code or token.
     static func setupCommandFile(cli: GrokCLI?, grokHome: URL = UsageScanner.grokHome(),

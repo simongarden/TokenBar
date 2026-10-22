@@ -252,3 +252,53 @@ private actor Calls {
         #expect(!s2.contains("install.sh") && s2.contains("'/opt/grok' login"))
     }
 }
+
+private final class Box<T>: @unchecked Sendable {
+    private let lock = NSLock(); private var v: T
+    init(_ v: T) { self.v = v }
+    var value: T { get { lock.lock(); defer { lock.unlock() }; return v } set { lock.lock(); v = newValue; lock.unlock() } }
+}
+
+@Suite struct GrokAutoRefreshTests {
+    let now = ISO8601DateFormatter().date(from: "2026-10-22T06:30:00Z")!
+    func ok(_ req: URLRequest) -> (Data, URLResponse) {
+        (json(["config": ["creditUsagePercent": 5]]), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+
+    @Test func expiredLoginIsRefreshedByCLIOnceThenUsed() async {
+        let cred = Box(GrokCredential(token: "t", expiresAt: now.addingTimeInterval(-60), email: nil))
+        let runs = Box(0)
+        let c = GrokUsageClient(readCredential: { cred.value }, transport: { ok($0) }, refreshCredential: {
+            runs.value += 1
+            cred.value.expiresAt = Date(timeIntervalSince1970: 4_000_000_000)   // the CLI wrote a new 6 h token
+            return true
+        })
+        let r = await c.fetch(now: now)
+        #expect(runs.value == 1 && r.status == .ok)
+    }
+
+    @Test func failedRefreshWaitsThirtyMinutes() async {
+        let runs = Box(0)
+        let c = GrokUsageClient(readCredential: { GrokCredential(token: "t", expiresAt: Date(timeIntervalSince1970: 1), email: nil) },
+                                transport: { req in Issue.record("expired token must not be sent"); return ok(req) },
+                                refreshCredential: { runs.value += 1; return true })
+        #expect(await c.fetch(now: now).status == .expired)
+        _ = await c.fetch(now: now.addingTimeInterval(10 * 60))
+        _ = await c.fetch(now: now.addingTimeInterval(20 * 60))
+        #expect(runs.value == 1)
+        _ = await c.fetch(now: now.addingTimeInterval(31 * 60))
+        #expect(runs.value == 2)
+    }
+
+    @Test func settingOffNeverRunsCLI() async {
+        let c = GrokUsageClient(readCredential: { GrokCredential(token: "t", expiresAt: Date(timeIntervalSince1970: 1), email: nil) },
+                                transport: { ok($0) }, refreshCredential: { false })
+        #expect(await c.fetch(now: now).status == .expired)
+    }
+
+    @Test func refreshEnvironmentBlocksBrowserAndKeepsGrokHome() {
+        let env = GrokCLI.refreshEnvironment(["HOME": "/Users/x", "PATH": "/usr/bin", "GROK_HOME": "/g", "NODE_OPTIONS": "x", "BROWSER": "open"])
+        #expect(env["BROWSER"] == "/usr/bin/false" && env["GROK_HOME"] == "/g" && env["NODE_OPTIONS"] == nil)
+        #expect(GrokCLI.refreshArguments == ["models"])
+    }
+}

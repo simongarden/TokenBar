@@ -71,6 +71,9 @@ actor GrokUsageClient {
 
     typealias CredentialReader = @Sendable () -> GrokCredential?
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    /// Lets the Grok CLI refresh its own expired login; false if it did not run (setting off, CLI missing).
+    typealias CredentialRefresher = @Sendable () async -> Bool
+    static let cliRefreshInterval: TimeInterval = 30 * 60
 
     static let billingURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
     static let settingsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/settings")!
@@ -78,14 +81,18 @@ actor GrokUsageClient {
 
     private let readCredential: CredentialReader
     private let transport: Transport
+    private let refreshCredential: CredentialRefresher?
+    private var lastCLIRefresh = Date.distantPast
     private var nextAllowed = Date.distantPast
     private var backoffMinutes: Double = 0
     private var last: Result?
 
     init(readCredential: @escaping CredentialReader = { GrokCredential.read() },
-         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }) {
+         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+         refreshCredential: CredentialRefresher? = nil) {
         self.readCredential = readCredential
         self.transport = transport
+        self.refreshCredential = refreshCredential
     }
 
     /// A new login or re-enabled quota lookup: forget the last result and allow an immediate call.
@@ -107,9 +114,21 @@ actor GrokUsageClient {
             return r
         }
         nextAllowed = now.addingTimeInterval(interval)
-        guard let cred = readCredential() else { return remember(.init(status: .noCredential)) }
-        // Never send an expired token; the CLI refreshes it on its next run.
-        if let e = cred.expiresAt, e <= now { return remember(.init(status: .expired)) }
+        guard var cred = readCredential() else { return remember(.init(status: .noCredential)) }
+        // Never send an expired token. The login lasts ~6 h and only the CLI refreshes it, so when allowed
+        // let it do that (at most every 30 min), then re-read; OKM Skirr never writes auth.json itself.
+        if let e = cred.expiresAt, e <= now {
+            guard let refreshCredential, now.timeIntervalSince(lastCLIRefresh) >= Self.cliRefreshInterval else {
+                return remember(.init(status: .expired))
+            }
+            lastCLIRefresh = now   // before awaiting: a failed or slow run must not repeat on the next poll
+            guard await refreshCredential(), let fresh = readCredential(), (fresh.expiresAt ?? .distantFuture) > now else {
+                glog.notice("login expired; Grok CLI refresh did not produce a new token")
+                return remember(.init(status: .expired))
+            }
+            glog.notice("token refreshed by Grok CLI")
+            cred = fresh
+        }
 
         let billing: (Data, HTTPURLResponse)
         do { billing = try await get(Self.billingURL, token: cred.token, timeout: 15) }

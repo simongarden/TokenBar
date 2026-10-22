@@ -23,7 +23,7 @@ final class UsageStore {
     var grokNote: String?
     @ObservationIgnored private var grokWatch: Task<Void, Never>?
     private let scanner = UsageScanner()
-    private let grokClient = GrokUsageClient()
+    private let grokClient = GrokUsageClient(refreshCredential: GrokCLI.refreshIfEnabled)
     private let claudeClient = ClaudeUsageClient(refreshCredential: ClaudeCLI.refreshIfEnabled)
     @ObservationIgnored private var loop: Task<Void, Never>?
     var active: Set<Service> = []
@@ -525,6 +525,21 @@ func countdown(_ date: Date?, weekly: Bool, now: Date = Date()) -> String? {
         return h >= 24 ? "\(h / 24)d\(h % 24)h" : "\(h)h"
     }
     return mins >= 60 ? "\(mins / 60)h\(mins % 60)m" : "\(mins)m"
+}
+
+extension GrokCLI {
+    /// Expired Grok login: let the CLI refresh it with `grok models` (setting on, CLI found).
+    /// True if the CLI ran; the client re-reads auth.json to see whether it helped.
+    @Sendable static func refreshIfEnabled() async -> Bool {
+        guard Prefs.grokCLIRefresh else { return false }
+        guard let cli = GrokCLI.locate() else {
+            log.notice("grok models refresh: CLI not found")
+            return false
+        }
+        let code = await cli.refreshLogin()
+        log.notice("grok models refresh: exit \(code.map(String.init) ?? "none", privacy: .public)")
+        return true
+    }
 }
 
 extension ClaudeCLI {

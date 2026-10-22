@@ -123,6 +123,7 @@ enum SettingsKey {
     static let claudeCLIConsent = "claudeBackgroundCLIConsentV1"
     static let claudeCLIRefresh = "claudeCLIRefreshOnExpiry"
     static let grokQuota = "grokQuotaFromCLILogin"
+    static let grokCLIRefresh = "grokCLIRefreshOnExpiry"
 }
 
 func percentText(_ r: RateInfo?) -> String {

@@ -21,6 +21,11 @@ enum Prefs {
     }
     /// Grok Bot activity icon (the Grok CLI service uses `Service.grok`, key "grokcli").
     static var grokEnabled: Bool { isEnabled("grok") }
+    /// Explicit opt-in (default off): run `grok models` in the background when the login expires.
+    static var grokCLIRefresh: Bool {
+        get { UserDefaults.standard.bool(forKey: SettingsKey.grokCLIRefresh) }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.grokCLIRefresh) }
+    }
     /// Weekly quota via the Grok CLI login; off = local session logs only.
     static var grokQuota: Bool {
         get { UserDefaults.standard.object(forKey: SettingsKey.grokQuota) as? Bool ?? true }
@@ -413,6 +418,7 @@ struct OnboardingView: View {
 struct SettingsView: View {
     var store: UsageStore? = nil
     @State private var sel: [String: Bool] = Dictionary(uniqueKeysWithValues: Service.allCases.map { ($0.rawValue, Prefs.isEnabled($0)) } + [("grok", Prefs.grokEnabled)])
+    @State private var grokAutoRefresh = Prefs.grokCLIRefresh
     @State private var connected = Prefs.claudeAPI
     @State private var autoRepair = Prefs.claudeCLIRefresh
     @State private var awaitingLogin = false
@@ -490,6 +496,14 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         if Prefs.grokQuota && grok.action != .install && grok.action != .enableQuota {
+            Toggle(isOn: $grokAutoRefresh) { Text("自動保持 Grok 連線").frame(maxWidth: .infinity, alignment: .leading) }
+                .toggleStyle(.switch)
+                .onChange(of: grokAutoRefresh) { _, value in
+                    Prefs.grokCLIRefresh = value
+                    NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)
+                }
+            Text("Grok 登入約每 6 小時到期。開啟後，到期時會在背景啟動 Grok CLI 更新登入，不會使用額度、也不會開啟視窗。預設關閉。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("停止查詢 Grok 每週額度") {
                 Prefs.grokQuota = false
                 NotificationCenter.default.post(name: .tokenBarPrefsChanged, object: nil)

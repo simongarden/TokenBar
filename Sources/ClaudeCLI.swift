@@ -117,11 +117,18 @@ struct ClaudeCLI: Sendable {
     }
 
     func run(_ arguments: [String], timeout: TimeInterval, workingDirectory: URL) async -> Int32? {
+        await Self.runProcess(executable, arguments, timeout: timeout, workingDirectory: workingDirectory,
+                              environment: Self.environment(), label: "claude")
+    }
+
+    /// Runs a CLI with no stdin/stdout/stderr; nil on launch failure, signal exit or timeout (then killed).
+    static func runProcess(_ executable: URL, _ arguments: [String], timeout: TimeInterval, workingDirectory: URL,
+                           environment: [String: String], label: String) async -> Int32? {
         let p = Process()
         p.executableURL = executable
         p.arguments = arguments
         p.currentDirectoryURL = workingDirectory
-        p.environment = Self.environment()
+        p.environment = environment
         p.standardInput = FileHandle.nullDevice
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
@@ -138,12 +145,12 @@ struct ClaudeCLI: Sendable {
                 _ = finish(proc.terminationReason == .exit ? proc.terminationStatus : nil)
             }
             do { try p.run() } catch {
-                cliLog.error("claude \(arguments.joined(separator: " "), privacy: .public) failed to start: \(error.localizedDescription, privacy: .public)")
+                cliLog.error("\(label, privacy: .public) \(arguments.joined(separator: " "), privacy: .public) failed to start: \(error.localizedDescription, privacy: .public)")
                 _ = finish(nil); return
             }
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 guard finish(nil) else { return }
-                cliLog.notice("claude \(arguments.joined(separator: " "), privacy: .public) timed out after \(Int(timeout))s; terminating")
+                cliLog.notice("\(label, privacy: .public) \(arguments.joined(separator: " "), privacy: .public) timed out after \(Int(timeout))s; terminating")
                 box.process.terminate()
                 DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
                     if box.process.isRunning { kill(box.process.processIdentifier, SIGKILL) }
