@@ -220,6 +220,8 @@ enum SecurityTool {
 
 /// Reads Claude Code's OAuth credential (`claudeAiOauth.accessToken`) from the login Keychain and calls
 /// the same endpoint `/usage` uses. Token stays in memory only; never logged.
+/// Connection failures: retried once on a new connection (NetworkRetry); the first failure in a row
+/// keeps the last good result and retries after 1 min, the second reports `.failed`.
 /// Throttling: success → next call ≥ 5 min; 429 → Retry-After or 10→20→40→60 min backoff,
 /// persisted in UserDefaults so relaunching does not reset it.
 /// Expired credential: asks `refreshCredential` (runs `claude doctor`) at most once per 30 min,
@@ -242,12 +244,16 @@ actor ClaudeUsageClient {
     static let cliRefreshKey = "claudeCLIRefreshLastAttempt"
     private let successInterval: TimeInterval = 5 * 60
     static let cliRefreshInterval: TimeInterval = 30 * 60
+    static let networkRetryDelay: TimeInterval = 60
 
     private let defaults: UserDefaults
     private let readToken: TokenReader
     private let transport: Transport
+    private let retryTransport: Transport
     private let refreshCredential: CredentialRefresher?
     private let hasConsent: @Sendable () -> Bool
+    /// Consecutive attempts that got no HTTP response at all.
+    private var networkFailures = 0
     private var credentialGeneration = 0
 
     private var token: String?
@@ -261,11 +267,13 @@ actor ClaudeUsageClient {
     init(defaultsSuite: String? = nil,
          readToken: @escaping TokenReader = { ClaudeKeychain.readToken() },
          transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+         retryTransport: @escaping Transport = NetworkRetry.freshConnection,
          refreshCredential: CredentialRefresher? = nil,
          hasConsent: @escaping @Sendable () -> Bool = { ClaudeAccessPolicy.canReadCredentials() }) {
         self.defaults = defaultsSuite.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.readToken = readToken
         self.transport = transport
+        self.retryTransport = retryTransport
         self.refreshCredential = refreshCredential
         self.hasConsent = hasConsent
     }
@@ -369,7 +377,9 @@ actor ClaudeUsageClient {
         req.setValue("claude-code/\(Self.claudeCodeVersion())", forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 15
         do {
-            let (data, resp) = try await transport(req)
+            let (data, resp) = try await NetworkRetry.send(req, using: transport, retry: retryTransport,
+                                                           log: clog, label: "GET /api/oauth/usage")
+            networkFailures = 0
             guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
             let http = resp as? HTTPURLResponse
             let code = http?.statusCode ?? 0
@@ -409,6 +419,16 @@ actor ClaudeUsageClient {
             return (info, .ok)
         } catch {
             guard hasConsent(), generation == credentialGeneration else { return (nil, .consentRequired) }
+            // No response even on a new connection: the first such failure in a row keeps the last good
+            // result on screen and retries sooner; only a second one shows the connection problem.
+            if NetworkRetry.isConnectionError(error) {
+                networkFailures += 1
+                if networkFailures == 1, let cached, lastStatus == .ok {
+                    nextAllowed = now.addingTimeInterval(Self.networkRetryDelay)
+                    clog.notice("keeping the last result after a connection failure; next attempt in \(Int(Self.networkRetryDelay))s")
+                    return (cached, .ok)
+                }
+            }
             return fail(.failed, now: now)
         }
     }

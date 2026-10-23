@@ -40,6 +40,8 @@ struct GrokCredential: Sendable, Equatable {
 /// Weekly credit pool from the endpoint the Grok CLI itself calls
 /// (`cli-chat-proxy.grok.com/v1/billing?format=credits`) plus the plan from `/v1/settings`.
 /// Throttling: any attempt → next call ≥ 5 min; 429 → Retry-After or 10→20→40→60 min backoff.
+/// Connection failures: retried once on a new connection (NetworkRetry); if that also fails, the first
+/// failure in a row keeps showing the last good result and retries after 1 min, the second shows `.failed`.
 actor GrokUsageClient {
     enum Status: Sendable, Equatable {
         case ok
@@ -78,10 +80,14 @@ actor GrokUsageClient {
     static let billingURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
     static let settingsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/settings")!
     private let interval: TimeInterval = 5 * 60
+    static let networkRetryDelay: TimeInterval = 60
 
     private let readCredential: CredentialReader
     private let transport: Transport
+    private let retryTransport: Transport
     private let refreshCredential: CredentialRefresher?
+    /// Consecutive attempts that got no HTTP response at all.
+    private var networkFailures = 0
     private var lastCLIRefresh = Date.distantPast
     private var nextAllowed = Date.distantPast
     private var backoffMinutes: Double = 0
@@ -89,9 +95,11 @@ actor GrokUsageClient {
 
     init(readCredential: @escaping CredentialReader = { GrokCredential.read() },
          transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+         retryTransport: @escaping Transport = NetworkRetry.freshConnection,
          refreshCredential: CredentialRefresher? = nil) {
         self.readCredential = readCredential
         self.transport = transport
+        self.retryTransport = retryTransport
         self.refreshCredential = refreshCredential
     }
 
@@ -132,7 +140,17 @@ actor GrokUsageClient {
 
         let billing: (Data, HTTPURLResponse)
         do { billing = try await get(Self.billingURL, token: cred.token, timeout: 15) }
-        catch { return remember(.init(status: .failed)) }
+        catch {
+            guard NetworkRetry.isConnectionError(error) else { return remember(.init(status: .failed)) }
+            networkFailures += 1
+            if networkFailures == 1, let l = last, l.status == .ok || l.status == .usageUnknown {
+                nextAllowed = now.addingTimeInterval(Self.networkRetryDelay)
+                glog.notice("keeping the last result after a connection failure; next attempt in \(Int(Self.networkRetryDelay))s")
+                return l
+            }
+            return remember(.init(status: .failed))
+        }
+        networkFailures = 0
         let code = billing.1.statusCode
         glog.notice("GET /v1/billing -> \(code, privacy: .public)")
         if code == 429 {
@@ -171,7 +189,8 @@ actor GrokUsageClient {
         req.setValue("xai-grok-cli", forHTTPHeaderField: "x-xai-token-auth")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = timeout
-        let (data, resp) = try await transport(req)
+        let (data, resp) = try await NetworkRetry.send(req, using: transport, retry: retryTransport,
+                                                       log: glog, label: "GET \(url.path)")
         guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         return (data, http)
     }
