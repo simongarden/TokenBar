@@ -333,17 +333,8 @@ struct CardBackground: ViewModifier {
 enum MeterStyle {
     static let fill = Color(nsColor: .secondaryLabelColor)
 
-    private static func dynamic(_ name: String, light: UInt32, dark: UInt32) -> Color {
-        func ns(_ v: UInt32) -> NSColor {
-            NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
-                    blue: CGFloat(v & 0xFF) / 255, alpha: 1)
-        }
-        return Color(nsColor: NSColor(name: NSColor.Name(name)) { ap in
-            ap.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? ns(dark) : ns(light)
-        })
-    }
-    static let warning = dynamic("TokenBarWarning", light: 0xB45309, dark: 0xF0A04B)   // >= 70%
-    static let danger = dynamic("TokenBarDanger", light: 0xC0362C, dark: 0xF07A6E)     // >= 90%
+    static let warning = SKIRRBrand.warning   // >= 70%
+    static let danger = SKIRRBrand.danger     // >= 90%
 
     static func fill(for percent: Double) -> Color {
         percent >= 90 ? danger : percent >= 70 ? warning : fill

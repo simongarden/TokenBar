@@ -338,7 +338,7 @@ struct OnboardingView: View {
                 ProviderRow(info: p, on: Binding(get: { sel[p.id] ?? false }, set: { sel[p.id] = $0 }))
             }
             if !sel.values.contains(true) {
-                Text("請至少選擇一項服務。").font(.caption).foregroundStyle(.orange)
+                Text("請至少選擇一項服務。").font(.caption).foregroundStyle(SKIRRBrand.warning)
             }
         }
     }
@@ -363,7 +363,7 @@ struct OnboardingView: View {
 
     private var done: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: "checkmark.seal.fill").font(.system(size: 36, weight: .semibold)).foregroundStyle(.green)
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 36, weight: .semibold)).foregroundStyle(SKIRRBrand.success)
             Text("設定完成").font(.title2.weight(.bold))
             Text("選單列將顯示：").foregroundStyle(.secondary)
             HStack {

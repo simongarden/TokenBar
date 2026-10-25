@@ -26,7 +26,7 @@ struct ConnectionPanel<P: ConnectionPresenting>: View {
             Label(busy ? "正在處理 \(service) 連線…" : (awaitingLogin ? "等待你完成 \(service) 登入" : presentation.title),
                   systemImage: presentation.connected ? "checkmark.circle.fill" : "person.crop.circle")
                 .font(.headline)
-                .foregroundStyle(presentation.connected ? Color.green : .primary)
+                .foregroundStyle(presentation.connected ? SKIRRBrand.success : .primary)
             Text(awaitingLogin ? (confirmLogin == nil ? "請依剛開啟的視窗完成操作，完成後這裡會自動更新。"
                                                       : "請在剛開啟的登入視窗完成操作，再回到這裡確認。")
                                : presentation.detail).font(.callout).foregroundStyle(.secondary)
