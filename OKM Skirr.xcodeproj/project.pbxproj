@@ -14,6 +14,7 @@
 		0FD9796CF7110921309BC9F5 /* RecentFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8308A6ADF5EA2F4398DCFF6B /* RecentFileWatcher.swift */; };
 		1CA7A27B7B1CBAD271CC22C0 /* GrokCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748B28243B4AE1343BA87EC3 /* GrokCLI.swift */; };
 		1D6F4DC7256DACAE2F9B89FA /* ClaudeCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AD7922061207F4291BAFF7 /* ClaudeCLI.swift */; };
+		1F52D8CA49BCE73B88F6988F /* MeterScaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587B3B4A390071A93D6CA891 /* MeterScaleTests.swift */; };
 		2DFB5D178B2F8266A6F1C73D /* StatusImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28258564184D5C393E8E8685 /* StatusImageRenderer.swift */; };
 		2FD536B1A213250F54882CB2 /* GrokUsageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AE242F52553D6358DE94384 /* GrokUsageTests.swift */; };
 		4C70397C1C6FA17B2955D01D /* SKIRR_Logo_animated_v5.svg in Resources */ = {isa = PBXBuildFile; fileRef = 1BF53280068774992CCFDDCE /* SKIRR_Logo_animated_v5.svg */; };
@@ -66,6 +67,7 @@
 		3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClientTests.swift; sourceTree = "<group>"; };
 		4D9450B085FA6A58C263174B /* ClaudeConnectionPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConnectionPanel.swift; sourceTree = "<group>"; };
 		532A4EEBFC713AB103C606F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		587B3B4A390071A93D6CA891 /* MeterScaleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeterScaleTests.swift; sourceTree = "<group>"; };
 		66D168D73FE86DC8ED4DBFE5 /* SKIRRLogoAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SKIRRLogoAnimation.swift; sourceTree = "<group>"; };
 		66D1C9395E574E74ADBC20E7 /* ClaudeUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageClient.swift; sourceTree = "<group>"; };
 		748B28243B4AE1343BA87EC3 /* GrokCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCLI.swift; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 				C16AB7184CAC0F89DD70F371 /* ClaudeKeychainReadTests.swift */,
 				3D43570631C90DAD4D154510 /* ClaudeUsageClientTests.swift */,
 				8AE242F52553D6358DE94384 /* GrokUsageTests.swift */,
+				587B3B4A390071A93D6CA891 /* MeterScaleTests.swift */,
 				17C5E10832D3A507882BCCB2 /* NetworkRetryTests.swift */,
 				0348160007A1D478464A6CD2 /* PlanNameTests.swift */,
 				C74AF5EFABAC7AF39BF74E00 /* RecentFileWatcherTests.swift */,
@@ -319,6 +322,7 @@
 				1CA7A27B7B1CBAD271CC22C0 /* GrokCLI.swift in Sources */,
 				E1F623ACB7AFA0EF12B167F6 /* GrokUsageClient.swift in Sources */,
 				2FD536B1A213250F54882CB2 /* GrokUsageTests.swift in Sources */,
+				1F52D8CA49BCE73B88F6988F /* MeterScaleTests.swift in Sources */,
 				DF9B616B7FC566CCC5F40D05 /* Models.swift in Sources */,
 				A87953DC54CCFF893FBADDAE /* NetworkRetry.swift in Sources */,
 				0A0185B26DDA01A8BEFC6557 /* NetworkRetryTests.swift in Sources */,

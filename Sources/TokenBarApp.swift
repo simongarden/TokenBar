@@ -232,11 +232,14 @@ struct MenuBarLabelContent: View {
                     if let r = meterRate(s), let p = r.primary {
                         if let w = r.secondary {
                             VStack(alignment: .leading, spacing: 2) {
-                                meterRow(p, height: 6, text: countdown(p.resetsAt, weekly: false), size: 8, svc: s.service)
-                                meterRow(w, height: 6, text: countdown(w.resetsAt, weekly: true), size: 8, svc: s.service)
+                                meterRow(p, height: 6, text: countdown(p.resetsAt, weekly: false), size: 8, svc: s.service,
+                                         segments: MeterScale.segments(windowMinutes: p.windowMinutes, weeklyIfUnknown: false))
+                                meterRow(w, height: 6, text: countdown(w.resetsAt, weekly: true), size: 8, svc: s.service,
+                                         segments: MeterScale.segments(windowMinutes: w.windowMinutes, weeklyIfUnknown: true))
                             }
                         } else {
-                            meterRow(p, height: 12, text: countdown(p.resetsAt, weekly: (p.windowMinutes ?? 0) > 1440), size: 10, svc: s.service)
+                            meterRow(p, height: 12, text: countdown(p.resetsAt, weekly: (p.windowMinutes ?? 0) > 1440), size: 10, svc: s.service,
+                                     segments: MeterScale.segments(windowMinutes: p.windowMinutes, weeklyIfUnknown: false))
                         }
                     } else {
                         Text(text(s)).lineLimit(1).fixedSize()
@@ -255,9 +258,9 @@ struct MenuBarLabelContent: View {
         .fixedSize()
     }
 
-    private func meterRow(_ w: RateWindow, height: CGFloat, text: String?, size: CGFloat, svc: Service) -> some View {
+    private func meterRow(_ w: RateWindow, height: CGFloat, text: String?, size: CGFloat, svc: Service, segments: Int) -> some View {
         HStack(spacing: 3) {
-            SegmentMeter(percent: w.usedPercent, color: mono, height: height, fill: ink(svc),
+            SegmentMeter(percent: w.usedPercent, color: mono, height: height, segments: segments, fill: ink(svc),
                          // gray fill: fainter track so filled segments still stand out
                          trackOpacity: ink(svc) == MenuBarPalette.gray ? 0.1 : 0.25)
             if let text {
@@ -496,23 +499,29 @@ struct TokenBarApp: App {
     }
 }
 
-/// 5 rounded vertical segments, each = 20%; filled = ceil(percent / 20).
+/// Rounded vertical segments (10 for the 5-hour window, 7 for a week; see MeterScale), always the same
+/// total width so a 5-hour row and a weekly row stacked together line up.
 struct SegmentMeter: View {
     let percent: Double
     let color: Color
     let height: CGFloat
+    var segments = 10
     /// Filled segments; unfilled ones are `color` at `trackOpacity`.
     var fill: Color? = nil
     var trackOpacity: Double = 0.25
-    var filled: Int { percent <= 0 ? 0 : min(5, Int((percent / 20).rounded(.up))) }
+    static let width: CGFloat = 29   // 10 × 2 pt + 9 × 1 pt gap
+    static let gap: CGFloat = 1
     var body: some View {
-        HStack(spacing: 1.5) {
-            ForEach(0..<5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
+        let filled = MeterScale.filled(percent: percent, segments: segments)
+        let w = (Self.width - Self.gap * CGFloat(segments - 1)) / CGFloat(segments)
+        HStack(spacing: Self.gap) {
+            ForEach(0..<segments, id: \.self) { i in
+                RoundedRectangle(cornerRadius: min(1, w / 2), style: .continuous)
                     .fill(i < filled ? (fill ?? color) : color.opacity(trackOpacity))
-                    .frame(width: 3, height: height)
+                    .frame(width: w, height: height)
             }
         }
+        .frame(width: Self.width, alignment: .leading)
     }
 }
 

@@ -180,3 +180,18 @@ enum PlanName {
         s.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 }
+
+/// Menu bar meter segments: the 5-hour window has 10 (10% each), a weekly window 7 (about one day
+/// each), so "filled segments vs. days elapsed" shows at a glance whether the week is overspent.
+enum MeterScale {
+    static func segments(windowMinutes: Int?, weeklyIfUnknown: Bool) -> Int {
+        guard let m = windowMinutes else { return weeklyIfUnknown ? 7 : 10 }
+        return m > 24 * 60 ? 7 : 10
+    }
+
+    /// Any usage lights at least one segment; 100% (or more) lights them all.
+    static func filled(percent: Double, segments: Int) -> Int {
+        guard percent > 0, segments > 0 else { return 0 }
+        return min(segments, Int((percent / (100 / Double(segments))).rounded(.up)))
+    }
+}
